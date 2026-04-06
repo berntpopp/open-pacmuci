@@ -354,17 +354,31 @@ def run(
 
     # Step 4: Build consensus
     click.echo("Step 4/5: Building consensus...")
-    consensus_paths = build_consensus_per_allele(ref, vcf_paths, alleles_result, out)
+    consensus_paths = build_consensus_per_allele(
+        ref, vcf_paths, alleles_result, out, repeat_dict=rd
+    )
 
     # Step 5: Classify repeats
     click.echo("Step 5/5: Classifying repeats...")
+    from open_pacmuci.classify import validate_mutations_against_vcf
+
     all_results: dict[str, dict] = {}
     for allele_key, fa_path in consensus_paths.items():
         fa_lines = fa_path.read_text().strip().splitlines()
         sequence = "".join(line for line in fa_lines if not line.startswith(">"))
         result = classify_sequence(sequence, rd)
+
+        # VCF-backed validation if VCF available
+        if allele_key in vcf_paths:
+            vcf_variants = _parse_vcf_for_validation(vcf_paths[allele_key])
+            result = validate_mutations_against_vcf(
+                result, vcf_variants=vcf_variants
+            )
+
         all_results[allele_key] = result
         click.echo(f"  {allele_key}: {result['structure']}")
+        if result.get("allele_confidence") is not None:
+            click.echo(f"    confidence: {result['allele_confidence']:.2f}")
 
     # Write combined outputs
     (out / "repeats.json").write_text(json.dumps(all_results, indent=2) + "\n")
@@ -384,6 +398,35 @@ def run(
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     click.echo("Pipeline complete.")
+
+
+def _parse_vcf_for_validation(vcf_path: Path) -> list[dict]:
+    """Parse VCF variants for mutation validation."""
+    from open_pacmuci.tools import run_tool
+
+    try:
+        output = run_tool(
+            [
+                "bcftools",
+                "query",
+                "-f",
+                "%POS\\t%QUAL\\n",
+                str(vcf_path),
+            ]
+        )
+    except (RuntimeError, FileNotFoundError):
+        return []
+    variants = []
+    for line in output.strip().splitlines():
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            try:
+                variants.append({"pos": int(parts[0]), "qual": float(parts[1])})
+            except ValueError:
+                continue
+    return variants
 
 
 def _bundled_reference() -> Path:
