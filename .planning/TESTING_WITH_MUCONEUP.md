@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- MucOneUp v0.43.2+ installed and configured
+- MucOneUp v0.43.2+ installed and configured (https://github.com/berntpopp/muconeup)
 - pbsim3 installed (for PacBio HiFi simulation)
 - minimap2 installed (for alignment)
 - A PacBio HiFi error model file (`.model`) for pbsim3

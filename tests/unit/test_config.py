@@ -47,9 +47,7 @@ class TestLoadRepeatDictionary:
         """Every repeat sequence in the bundled dictionary is exactly 60 bp."""
         rd = load_repeat_dictionary()
         for rid, seq in rd.repeats.items():
-            assert len(seq) == 60, (
-                f"Repeat '{rid}' has length {len(seq)}, expected 60"
-            )
+            assert len(seq) == 60, f"Repeat '{rid}' has length {len(seq)}, expected 60"
 
     def test_flanking_sequences_present(self):
         """Left and right flanking sequences are non-empty strings."""
@@ -99,16 +97,12 @@ class TestClassifyRepeatId:
     def test_classify_pre_repeat(self, dictionary: RepeatDictionary):
         """Pre-repeat IDs are classified as 'pre'."""
         for rid in ["1", "2", "3", "4", "4p", "5", "5C"]:
-            assert classify_repeat_id(rid, dictionary) == "pre", (
-                f"Expected 'pre' for '{rid}'"
-            )
+            assert classify_repeat_id(rid, dictionary) == "pre", f"Expected 'pre' for '{rid}'"
 
     def test_classify_after_repeat(self, dictionary: RepeatDictionary):
         """After-repeat IDs are classified as 'after'."""
         for rid in ["6", "6p", "7", "8", "9"]:
-            assert classify_repeat_id(rid, dictionary) == "after", (
-                f"Expected 'after' for '{rid}'"
-            )
+            assert classify_repeat_id(rid, dictionary) == "after", f"Expected 'after' for '{rid}'"
 
     def test_classify_canonical_repeat(self, dictionary: RepeatDictionary):
         """Canonical repeat ID 'X' is classified as 'canonical'."""

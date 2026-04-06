@@ -94,9 +94,7 @@ class TestCharacterizeDifferences:
         ref = "ACGT"
         query = "ACGAT"
         diffs = characterize_differences(ref, query)
-        total_indel = sum(
-            1 for d in diffs if d["type"] in ("insertion", "deletion")
-        )
+        total_indel = sum(1 for d in diffs if d["type"] in ("insertion", "deletion"))
         assert total_indel % 3 != 0  # frameshift
 
     def test_no_differences(self):

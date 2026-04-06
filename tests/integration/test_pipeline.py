@@ -45,7 +45,9 @@ class TestAlleleLengthDetection:
             ("sample_long_120_140", 120, 140),
         ],
     )
-    def test_allele_lengths(self, sample: str, expected_h1: int, expected_h2: int, tmp_path: Path) -> None:
+    def test_allele_lengths(
+        self, sample: str, expected_h1: int, expected_h2: int, tmp_path: Path
+    ) -> None:
         """Detected allele lengths match ground truth within tolerance."""
         from open_pacmuci.alleles import detect_alleles, parse_idxstats
         from open_pacmuci.config import load_repeat_dictionary

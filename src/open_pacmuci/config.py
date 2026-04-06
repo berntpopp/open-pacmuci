@@ -8,9 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # Default path: from src/open_pacmuci/config.py, go up three levels to project root
-_BUNDLED_REPEATS = (
-    Path(__file__).parent.parent.parent / "data" / "repeats" / "repeats.json"
-)
+_BUNDLED_REPEATS = Path(__file__).parent.parent.parent / "data" / "repeats" / "repeats.json"
 
 
 @dataclass

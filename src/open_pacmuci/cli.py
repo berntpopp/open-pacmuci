@@ -27,9 +27,7 @@ def main() -> None:
 )
 @click.option("--min-units", type=int, default=1, help="Minimum repeat units.")
 @click.option("--max-units", type=int, default=150, help="Maximum repeat units.")
-@click.option(
-    "--flank-length", type=int, default=500, help="Flanking sequence length (bp)."
-)
+@click.option("--flank-length", type=int, default=500, help="Flanking sequence length (bp).")
 @click.option(
     "--repeats-db",
     type=click.Path(exists=True),
@@ -68,9 +66,7 @@ def ladder(
     default=None,
     help="Reference FASTA (defaults to bundled ladder).",
 )
-@click.option(
-    "--output-dir", "-o", type=click.Path(), default=".", help="Output directory."
-)
+@click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
 def map_cmd(
     input_path: str,
@@ -98,12 +94,8 @@ def map_cmd(
     type=click.Path(exists=True),
     help="Input BAM file (mapped to ladder).",
 )
-@click.option(
-    "--min-coverage", type=int, default=10, help="Minimum read coverage."
-)
-@click.option(
-    "--output-dir", "-o", type=click.Path(), default=".", help="Output directory."
-)
+@click.option("--min-coverage", type=int, default=10, help="Minimum read coverage.")
+@click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 def alleles(input_path: str, min_coverage: int, output_dir: str) -> None:
     """Determine allele lengths from mapping."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
@@ -143,9 +135,7 @@ def alleles(input_path: str, min_coverage: int, output_dir: str) -> None:
     type=click.Path(exists=True),
     help="Alleles JSON from 'alleles' command.",
 )
-@click.option(
-    "--output-dir", "-o", type=click.Path(), default=".", help="Output directory."
-)
+@click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 @click.option("--clair3-model", type=str, default="", help="Path to Clair3 model.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
 def call(
@@ -198,9 +188,7 @@ def call(
     type=click.Path(exists=True),
     help="Alleles JSON.",
 )
-@click.option(
-    "--output-dir", "-o", type=click.Path(), default=".", help="Output directory."
-)
+@click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 def consensus(
     input_path: str,
     reference: str,
@@ -246,9 +234,7 @@ def consensus(
     default=None,
     help="Custom repeat dictionary JSON.",
 )
-@click.option(
-    "--output-dir", "-o", type=click.Path(), default=".", help="Output directory."
-)
+@click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 def classify(
     input_path: str,
     repeats_db: str | None,
@@ -308,9 +294,7 @@ def classify(
 )
 @click.option("--clair3-model", type=str, default="", help="Path to Clair3 model.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
-@click.option(
-    "--min-coverage", type=int, default=10, help="Minimum read coverage."
-)
+@click.option("--min-coverage", type=int, default=10, help="Minimum read coverage.")
 def run(
     input_path: str,
     output_dir: str,
@@ -376,9 +360,7 @@ def run(
     # Write combined outputs
     (out / "repeats.json").write_text(json.dumps(all_results, indent=2) + "\n")
     structures = {k: v["structure"] for k, v in all_results.items()}
-    (out / "repeats.txt").write_text(
-        "\n".join(f"{k}: {v}" for k, v in structures.items()) + "\n"
-    )
+    (out / "repeats.txt").write_text("\n".join(f"{k}: {v}" for k, v in structures.items()) + "\n")
 
     # Summary
     summary = {
@@ -407,8 +389,7 @@ def _bundled_reference() -> Path:
     ref = Path(__file__).parent.parent.parent / "data" / "reference" / "reference_ladder.fa"
     if not ref.exists():
         click.echo(
-            f"Bundled reference not found at {ref}. "
-            "Run 'open-pacmuci ladder' to generate it.",
+            f"Bundled reference not found at {ref}. Run 'open-pacmuci ladder' to generate it.",
             err=True,
         )
         sys.exit(1)

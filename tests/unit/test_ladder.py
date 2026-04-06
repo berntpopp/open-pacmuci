@@ -55,9 +55,7 @@ class TestGenerateLadderFasta:
     def test_generates_correct_count(self, repeat_dict, tmp_path):
         """Ladder with range 1-5 produces 5 contigs."""
         output = tmp_path / "ladder.fa"
-        generate_ladder_fasta(
-            repeat_dict, output, min_units=1, max_units=5, flank_length=100
-        )
+        generate_ladder_fasta(repeat_dict, output, min_units=1, max_units=5, flank_length=100)
         content = output.read_text()
         headers = [line for line in content.splitlines() if line.startswith(">")]
         assert len(headers) == 5
@@ -73,9 +71,7 @@ class TestGenerateLadderFasta:
     def test_fasta_format(self, repeat_dict, tmp_path):
         """Output is valid FASTA format."""
         output = tmp_path / "ladder.fa"
-        generate_ladder_fasta(
-            repeat_dict, output, min_units=1, max_units=2, flank_length=50
-        )
+        generate_ladder_fasta(repeat_dict, output, min_units=1, max_units=2, flank_length=50)
         content = output.read_text()
         lines = content.strip().splitlines()
         assert lines[0].startswith(">contig_1")

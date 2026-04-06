@@ -99,31 +99,37 @@ def characterize_differences(ref: str, query: str) -> list[dict]:
             j -= 1
         elif i > 0 and j > 0 and dp[i][j] == dp[i - 1][j - 1] + 1:
             # Substitution
-            diffs.append({
-                "pos": i,  # 1-based position in reference
-                "ref": ref[i - 1],
-                "alt": query[j - 1],
-                "type": "substitution",
-            })
+            diffs.append(
+                {
+                    "pos": i,  # 1-based position in reference
+                    "ref": ref[i - 1],
+                    "alt": query[j - 1],
+                    "type": "substitution",
+                }
+            )
             i -= 1
             j -= 1
         elif j > 0 and dp[i][j] == dp[i][j - 1] + 1:
             # Insertion in query
-            diffs.append({
-                "pos": i + 1,  # position after which insertion occurs
-                "ref": "",
-                "alt": query[j - 1],
-                "type": "insertion",
-            })
+            diffs.append(
+                {
+                    "pos": i + 1,  # position after which insertion occurs
+                    "ref": "",
+                    "alt": query[j - 1],
+                    "type": "insertion",
+                }
+            )
             j -= 1
         elif i > 0 and dp[i][j] == dp[i - 1][j] + 1:
             # Deletion from reference
-            diffs.append({
-                "pos": i,
-                "ref": ref[i - 1],
-                "alt": "",
-                "type": "deletion",
-            })
+            diffs.append(
+                {
+                    "pos": i,
+                    "ref": ref[i - 1],
+                    "alt": "",
+                    "type": "deletion",
+                }
+            )
             i -= 1
         else:
             break
@@ -225,12 +231,14 @@ def classify_sequence(
             labels.append(result["type"])
         elif result.get("classification") == "mutation":
             labels.append(f"{result['closest_match']}*")
-            mutations.append({
-                "repeat_index": i + 1,
-                "closest_type": result["closest_match"],
-                "differences": result["differences"],
-                "frameshift": result.get("frameshift", False),
-            })
+            mutations.append(
+                {
+                    "repeat_index": i + 1,
+                    "closest_type": result["closest_match"],
+                    "differences": result["differences"],
+                    "frameshift": result.get("frameshift", False),
+                }
+            )
         else:
             labels.append(f"?{result.get('closest_match', '?')}")
 
