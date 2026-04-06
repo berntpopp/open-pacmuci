@@ -1,0 +1,160 @@
+"""Read mapping with minimap2 and samtools."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from open_pacmuci.tools import run_tool
+
+
+def bam_to_fastq(bam_path: Path, output_dir: Path) -> Path:
+    """Convert BAM to FASTQ using samtools fastq.
+
+    Captures stdout from ``samtools fastq`` and writes it to
+    ``extracted_reads.fq`` in *output_dir*.
+
+    Args:
+        bam_path: Path to input BAM file.
+        output_dir: Directory for output FASTQ.
+
+    Returns:
+        Path to the output FASTQ file.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fastq_path = output_dir / "extracted_reads.fq"
+    stdout = run_tool(["samtools", "fastq", str(bam_path)])
+    fastq_path.write_text(stdout)
+    return fastq_path
+
+
+def map_reads(
+    input_path: Path,
+    reference_path: Path,
+    output_dir: Path,
+    threads: int = 4,
+) -> Path:
+    """Map reads to reference using minimap2 and sort/index with samtools.
+
+    Pipeline: ``minimap2 -a -x map-hifi`` → ``samtools sort`` →
+    ``samtools index``.  If *input_path* is a BAM file it is converted to
+    FASTQ first with :func:`bam_to_fastq`.
+
+    Args:
+        input_path: Path to input FASTQ or BAM file.
+        reference_path: Path to reference FASTA.
+        output_dir: Directory for output files.
+        threads: Number of threads for minimap2/samtools (default 4).
+
+    Returns:
+        Path to the sorted, indexed BAM file (``mapping.bam``).
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # If input is BAM, convert to FASTQ first
+    actual_input = input_path
+    if input_path.suffix.lower() == ".bam":
+        actual_input = bam_to_fastq(input_path, output_dir)
+
+    bam_path = output_dir / "mapping.bam"
+
+    # Pipe minimap2 SAM output directly to samtools sort to avoid
+    # holding the full SAM in memory.  All arguments are controlled
+    # internally (no user input), so a shell pipe is safe here.
+    _run_mapping_pipeline(actual_input, reference_path, bam_path, threads)
+
+    # samtools index
+    run_tool(["samtools", "index", str(bam_path)])
+
+    return bam_path
+
+
+def _run_mapping_pipeline(
+    input_path: Path,
+    reference_path: Path,
+    bam_path: Path,
+    threads: int,
+) -> None:
+    """Run minimap2 | samtools sort as a streaming pipeline.
+
+    Pipes minimap2 SAM output directly into samtools sort, avoiding
+    the need to hold the full SAM in memory.
+
+    Args:
+        input_path: Path to input FASTQ file.
+        reference_path: Path to reference FASTA.
+        bam_path: Path for sorted output BAM.
+        threads: Number of threads for minimap2/samtools.
+
+    Raises:
+        FileNotFoundError: If minimap2 or samtools is not found.
+        RuntimeError: If either process exits with non-zero status.
+    """
+    minimap2_cmd = [
+        "minimap2",
+        "-a",
+        "-x",
+        "map-hifi",
+        "-t",
+        str(threads),
+        str(reference_path),
+        str(input_path),
+    ]
+    samtools_cmd = [
+        "samtools",
+        "sort",
+        "-@",
+        str(threads),
+        "-o",
+        str(bam_path),
+    ]
+
+    try:
+        p1 = subprocess.Popen(
+            minimap2_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise FileNotFoundError("Tool not found: minimap2") from exc
+
+    try:
+        p2 = subprocess.Popen(
+            samtools_cmd,
+            stdin=p1.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        p1.kill()
+        p1.wait()
+        raise FileNotFoundError("Tool not found: samtools") from exc
+
+    # Allow p1 to receive SIGPIPE if p2 exits early
+    assert p1.stdout is not None
+    p1.stdout.close()
+
+    _, p2_stderr = p2.communicate()
+    p1.wait()
+
+    if p1.returncode != 0:
+        raise RuntimeError(
+            f"minimap2 failed with exit code {p1.returncode}.\n"
+            f"stderr: {p1.stderr.read().decode() if p1.stderr else ''}"
+        )
+    if p2.returncode != 0:
+        raise RuntimeError(
+            f"samtools sort failed with exit code {p2.returncode}.\nstderr: {p2_stderr.decode()}"
+        )
+
+
+def get_idxstats(bam_path: Path) -> str:
+    """Run ``samtools idxstats`` and return the raw text output.
+
+    Args:
+        bam_path: Path to an indexed BAM file.
+
+    Returns:
+        Raw idxstats text output (tab-separated).
+    """
+    return run_tool(["samtools", "idxstats", str(bam_path)])

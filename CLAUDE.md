@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Open-source reconstruction of the PacMUCI pipeline (Vrbacka et al. 2025, bioRxiv: 10.1101/2025.09.06.673538) for analyzing PacBio HiFi sequencing data of PCR amplicons spanning the MUC1 VNTR region. The original source code was never published; this project rebuilds it from the methods description.
 
-**Status:** Pre-implementation (planning phase). No source code exists yet. See `.planning/PLAN.md` for the full implementation plan.
-
 ## Pipeline Architecture
 
 The pipeline has 7 stages executed sequentially:
@@ -20,7 +18,7 @@ The pipeline has 7 stages executed sequentially:
 6. **Consensus Construction** -- bcftools consensus to build per-allele FASTA
 7. **Repeat Unit Classification** -- Split into 60bp units, classify using Vrbacka nomenclature (leveraging [muc1repeats](https://github.com/pristanna/muc1repeats))
 
-## Planned Tech Stack
+## Tech Stack
 
 - **Language:** Python 3.10+
 - **CLI:** Click 8.0+
@@ -28,22 +26,46 @@ The pipeline has 7 stages executed sequentially:
 - **Packaging:** pyproject.toml, Docker/Singularity, Conda
 - **Entry point:** `open-pacmuci run --input reads.bam --output results/`
 
-## Planned Repository Structure
+## Repository Structure
 
 ```
 src/open_pacmuci/     # Main package
   cli.py              # Click CLI entry point
-  reference.py        # Ladder reference generation
+  ladder.py           # Reference ladder generation
   mapping.py          # bwa-mem mapping + allele detection
+  alleles.py          # Allele length determination (peak detection)
   calling.py          # Clair3 variant calling
   consensus.py        # bcftools consensus
-  classify.py         # Repeat unit classification
+  classify.py         # Repeat unit classification (Vrbacka nomenclature)
+  tools.py            # External tool wrappers
   config.py           # Configuration management
-data/repeats/         # Repeat type definitions
+  version.py          # Package version
+data/repeats/         # Repeat type definitions (repeats.json)
 data/reference/       # Generated ladder reference (gitignored)
-tests/                # Test suite
-docker/Dockerfile
-conda/environment.yml
+tests/unit/           # Unit tests (no external tools required)
+tests/integration/    # Integration tests (require bwa, samtools, Clair3, bcftools)
+docker/               # Dockerfile
+conda/                # environment.yml
+scripts/              # Helper scripts (e.g., generate_testdata.sh)
+```
+
+## Development Commands
+
+```bash
+make dev               # Install with dev dependencies
+make test              # Run all tests with coverage
+make test-fast         # Unit tests only, no coverage
+make lint              # Run ruff linter
+make format            # Format code
+make type-check        # Run mypy
+make check             # All quality checks
+make generate-testdata # Generate MucOneUp test data
+```
+
+Run a single test:
+
+```bash
+uv run pytest tests/unit/test_classify.py::TestClassifyRepeat::test_exact_match -v --no-cov
 ```
 
 ## Testing Strategy

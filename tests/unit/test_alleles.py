@@ -1,0 +1,338 @@
+"""Tests for allele length detection from idxstats output."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from open_pacmuci.alleles import (
+    PRE_AFTER_REPEAT_COUNT,
+    _build_allele_info,
+    detect_alleles,
+    parse_idxstats,
+    refine_peak_contig,
+)
+
+# Example idxstats output: contig_name\tcontig_length\tmapped_reads\tunmapped_reads
+# contig_N means N canonical X repeats; total allele length = N + 9 (pre+after repeats)
+IDXSTATS_TWO_PEAKS = """\
+contig_58\t4000\t5\t0
+contig_59\t4060\t12\t0
+contig_60\t4120\t245\t0
+contig_61\t4180\t18\t0
+contig_62\t4240\t3\t0
+contig_78\t5200\t8\t0
+contig_79\t5260\t15\t0
+contig_80\t5320\t189\t0
+contig_81\t5380\t10\t0
+contig_82\t5440\t2\t0
+*\t0\t0\t50
+"""
+
+IDXSTATS_HOMOZYGOUS = """\
+contig_59\t4060\t20\t0
+contig_60\t4120\t310\t0
+contig_61\t4180\t25\t0
+*\t0\t0\t10
+"""
+
+IDXSTATS_LOW_COVERAGE = """\
+contig_60\t4120\t5\t0
+contig_80\t5320\t3\t0
+*\t0\t0\t100
+"""
+
+# Plateau distribution (like real HiFi data -- reads spread across adjacent contigs)
+IDXSTATS_PLATEAU = """\
+contig_48\t3000\t30\t0
+contig_49\t3060\t115\t0
+contig_50\t3120\t115\t0
+contig_51\t3180\t115\t0
+contig_52\t3240\t115\t0
+contig_53\t3300\t113\t0
+contig_54\t3360\t85\t0
+contig_68\t4200\t15\t0
+contig_69\t4260\t53\t0
+contig_70\t4320\t53\t0
+contig_71\t4380\t53\t0
+contig_72\t4440\t53\t0
+contig_73\t4500\t49\t0
+contig_74\t4560\t38\t0
+*\t0\t0\t20
+"""
+
+
+class TestParseIdxstats:
+    """Tests for parsing samtools idxstats output."""
+
+    def test_parses_contig_counts(self):
+        """Extracts repeat count -> read count mapping."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        assert counts[60] == 245
+        assert counts[80] == 189
+
+    def test_ignores_unmapped_line(self):
+        """The '*' unmapped line is excluded."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        # All keys should be integers (no '*' string key)
+        assert all(isinstance(k, int) for k in counts)
+
+    def test_extracts_repeat_count_from_name(self):
+        """Contig name 'contig_60' maps to repeat count 60."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        assert 60 in counts
+        assert counts[60] == 245
+
+
+class TestDetectAlleles:
+    """Tests for allele detection via peak finding."""
+
+    def test_two_alleles_detected(self):
+        """Detects two distinct allele lengths from two-peak data."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        lengths = sorted([result["allele_1"]["length"], result["allele_2"]["length"]])
+        # contig_60 + 9 = 69, contig_80 + 9 = 89
+        assert lengths == [60 + PRE_AFTER_REPEAT_COUNT, 80 + PRE_AFTER_REPEAT_COUNT]
+
+    def test_homozygous_detection(self):
+        """Single dominant peak is reported as homozygous."""
+        counts = parse_idxstats(IDXSTATS_HOMOZYGOUS)
+        result = detect_alleles(counts, min_coverage=10)
+        assert result["homozygous"] is True
+        assert result["allele_1"]["length"] == 60 + PRE_AFTER_REPEAT_COUNT
+
+    def test_low_coverage_raises(self):
+        """Raises ValueError when no contig meets minimum coverage."""
+        counts = parse_idxstats(IDXSTATS_LOW_COVERAGE)
+        with pytest.raises(ValueError, match="coverage"):
+            detect_alleles(counts, min_coverage=10)
+
+    def test_allele_reads_reported(self):
+        """Reports read counts for each allele."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        # allele_1 should be the one with more reads
+        assert result["allele_1"]["reads"] >= result["allele_2"]["reads"]
+
+    def test_output_is_json_serializable(self):
+        """Result can be serialized to JSON."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        serialized = json.dumps(result)
+        assert isinstance(serialized, str)
+
+    def test_plateau_cluster_detection(self):
+        """Detects peaks from plateau distributions (real HiFi-like data)."""
+        counts = parse_idxstats(IDXSTATS_PLATEAU)
+        result = detect_alleles(counts, min_coverage=10)
+        lengths = sorted([result["allele_1"]["length"], result["allele_2"]["length"]])
+        # Cluster 1 centers around contig_51 -> 51+9=60
+        # Cluster 2 centers around contig_71 -> 71+9=80
+        # Allow ±2 tolerance for weighted center rounding
+        assert abs(lengths[0] - 60) <= 2, f"Expected ~60, got {lengths[0]}"
+        assert abs(lengths[1] - 80) <= 2, f"Expected ~80, got {lengths[1]}"
+        assert result["homozygous"] is False
+
+    def test_contig_name_and_cluster_fields(self):
+        """Allele result includes contig_name and cluster_contigs."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        a1 = result["allele_1"]
+        assert "contig_name" in a1
+        assert a1["contig_name"].startswith("contig_")
+        assert "cluster_contigs" in a1
+        assert isinstance(a1["cluster_contigs"], list)
+        assert "canonical_repeats" in a1
+        assert a1["length"] == a1["canonical_repeats"] + PRE_AFTER_REPEAT_COUNT
+
+
+# ---------------------------------------------------------------------------
+# SAM output helpers for refine_peak_contig tests
+# ---------------------------------------------------------------------------
+
+
+def _make_sam_line(
+    read_name: str,
+    contig: str,
+    cigar: str = "3600M",
+    as_score: int = 3109,
+) -> str:
+    """Build a minimal SAM alignment line with an AS tag."""
+    seq = "A" * 10
+    qual = "I" * 10
+    return f"{read_name}\t0\t{contig}\t1\t60\t{cigar}\t*\t0\t0\t{seq}\t{qual}\tAS:i:{as_score}"
+
+
+SAM_ONE_CONTIG = "\n".join(
+    [_make_sam_line(f"read{i}", "contig_51", as_score=3100 + i) for i in range(5)]
+)
+
+SAM_TWO_CONTIGS = "\n".join(
+    [
+        _make_sam_line("r1", "contig_50", as_score=2800),
+        _make_sam_line("r2", "contig_50", as_score=2850),
+        _make_sam_line("r3", "contig_51", as_score=3100),
+        _make_sam_line("r4", "contig_51", as_score=3200),
+        _make_sam_line("r5", "contig_51", as_score=3150),
+    ]
+)
+
+SAM_WITH_INDELS = "\n".join(
+    [
+        _make_sam_line("r1", "contig_50", cigar="100M50I100M", as_score=200),
+        _make_sam_line("r2", "contig_51", cigar="3600M", as_score=3100),
+    ]
+)
+
+
+class TestRefinePeakContig:
+    """Tests for refine_peak_contig."""
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_selects_contig_with_highest_mean_as(self, mock_run_tool, tmp_path):
+        """Picks the contig whose reads have the highest mean alignment score."""
+        mock_run_tool.return_value = SAM_TWO_CONTIGS
+        bam = tmp_path / "mapping.bam"
+
+        result = refine_peak_contig(bam, ["contig_50", "contig_51"])
+
+        assert result["best_contig"] == "contig_51"
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_calls_samtools_view_with_cluster_contigs(self, mock_run_tool, tmp_path):
+        """samtools view is called with all cluster contig names."""
+        mock_run_tool.return_value = SAM_ONE_CONTIG
+        bam = tmp_path / "mapping.bam"
+        contigs = ["contig_50", "contig_51", "contig_52"]
+
+        refine_peak_contig(bam, contigs)
+
+        cmd = mock_run_tool.call_args[0][0]
+        assert cmd[:2] == ["samtools", "view"]
+        for c in contigs:
+            assert c in cmd
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_metrics_reported_per_contig(self, mock_run_tool, tmp_path):
+        """Returns per-contig mean_as, mean_indel_bp, and reads counts."""
+        mock_run_tool.return_value = SAM_TWO_CONTIGS
+        bam = tmp_path / "mapping.bam"
+
+        result = refine_peak_contig(bam, ["contig_50", "contig_51"])
+
+        assert "contig_50" in result["metrics"]
+        assert "contig_51" in result["metrics"]
+        m = result["metrics"]["contig_51"]
+        assert "mean_as" in m
+        assert "mean_indel_bp" in m
+        assert "reads" in m
+        assert m["reads"] == 3
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_single_contig_is_selected_as_best(self, mock_run_tool, tmp_path):
+        """When only one contig has reads, it is always selected."""
+        mock_run_tool.return_value = SAM_ONE_CONTIG
+        bam = tmp_path / "mapping.bam"
+
+        result = refine_peak_contig(bam, ["contig_51"])
+
+        assert result["best_contig"] == "contig_51"
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_empty_sam_output_falls_back_to_first_contig(self, mock_run_tool, tmp_path):
+        """With no aligned reads, best_contig defaults to the first in the list."""
+        mock_run_tool.return_value = ""
+        bam = tmp_path / "mapping.bam"
+        contigs = ["contig_48", "contig_49", "contig_50"]
+
+        result = refine_peak_contig(bam, contigs)
+
+        assert result["best_contig"] == "contig_48"
+        assert result["metrics"] == {}
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_indel_length_computed_from_cigar(self, mock_run_tool, tmp_path):
+        """mean_indel_bp is derived from I/D operations in the CIGAR string."""
+        mock_run_tool.return_value = SAM_WITH_INDELS
+        bam = tmp_path / "mapping.bam"
+
+        result = refine_peak_contig(bam, ["contig_50", "contig_51"])
+
+        # contig_50 read has 50I in CIGAR → mean_indel_bp == 50
+        assert result["metrics"]["contig_50"]["mean_indel_bp"] == 50.0
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_header_lines_are_skipped(self, mock_run_tool, tmp_path):
+        """SAM header lines starting with @ are ignored."""
+        sam_with_header = "@HD\tVN:1.6\n@SQ\tSN:contig_51\tLN:3660\n" + SAM_ONE_CONTIG
+        mock_run_tool.return_value = sam_with_header
+        bam = tmp_path / "mapping.bam"
+
+        # Should not raise or count header lines as reads
+        result = refine_peak_contig(bam, ["contig_51"])
+        assert result["metrics"]["contig_51"]["reads"] == 5
+
+
+class TestBuildAlleleInfo:
+    """Tests for _build_allele_info."""
+
+    def _cluster(self, center: int, total_reads: int, contigs=None):
+        if contigs is None:
+            contigs = [(center, total_reads)]
+        return {"center": center, "total_reads": total_reads, "contigs": contigs}
+
+    def test_length_includes_pre_after_repeats(self):
+        """Total length = canonical + PRE_AFTER_REPEAT_COUNT."""
+        cluster = self._cluster(51, 200)
+        info = _build_allele_info(cluster)
+        assert info["length"] == 51 + PRE_AFTER_REPEAT_COUNT
+
+    def test_canonical_repeats_matches_center(self):
+        """canonical_repeats field equals the cluster center."""
+        cluster = self._cluster(71, 150)
+        info = _build_allele_info(cluster)
+        assert info["canonical_repeats"] == 71
+
+    def test_reads_from_cluster_total(self):
+        """reads field comes from cluster total_reads."""
+        cluster = self._cluster(60, 300)
+        info = _build_allele_info(cluster)
+        assert info["reads"] == 300
+
+    def test_best_contig_used_when_provided(self):
+        """contig_name is set to best_contig when explicitly given."""
+        cluster = self._cluster(51, 200)
+        info = _build_allele_info(cluster, best_contig="contig_51")
+        assert info["contig_name"] == "contig_51"
+
+    def test_fallback_contig_name_when_no_best_contig(self):
+        """contig_name defaults to contig_<center> when best_contig is None."""
+        cluster = self._cluster(51, 200)
+        info = _build_allele_info(cluster, best_contig=None)
+        assert info["contig_name"] == "contig_51"
+
+    def test_cluster_contigs_list_built_correctly(self):
+        """cluster_contigs contains contig_N names for each contig in the cluster."""
+        cluster = self._cluster(51, 400, contigs=[(50, 100), (51, 200), (52, 100)])
+        info = _build_allele_info(cluster)
+        assert info["cluster_contigs"] == ["contig_50", "contig_51", "contig_52"]
+
+    def test_detect_alleles_with_bam_calls_refine(self):
+        """detect_alleles calls refine_peak_contig when bam_path is provided."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        bam = Path("/fake/mapping.bam")
+        with patch("open_pacmuci.alleles.refine_peak_contig") as mock_refine:
+            mock_refine.return_value = {
+                "best_contig": "contig_60",
+                "metrics": {"contig_60": {"mean_as": 3100.0, "mean_indel_bp": 0.0, "reads": 10}},
+            }
+            result = detect_alleles(counts, min_coverage=10, bam_path=bam)
+
+        # refine_peak_contig should have been called (once per cluster = 2 times)
+        assert mock_refine.call_count == 2
+        # The contig_name should come from the mock
+        assert result["allele_1"]["contig_name"] == "contig_60"
