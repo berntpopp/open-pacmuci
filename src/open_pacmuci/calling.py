@@ -182,16 +182,21 @@ def filter_vcf(
     vcf_path: Path,
     reference_path: Path,
     output_dir: Path,
+    min_qual: float = 0.0,
+    min_dp: int = 0,
 ) -> Path:
     """Normalize and filter a VCF file with bcftools.
 
     Runs ``bcftools norm -f <reference>`` followed by
-    ``bcftools view -f PASS`` and indexes the result.
+    ``bcftools view -f PASS`` (with optional quality filters) and indexes
+    the result.
 
     Args:
         vcf_path: Path to input VCF (may be gzipped).
         reference_path: Path to reference FASTA for left-normalisation.
         output_dir: Directory for output files.
+        min_qual: Minimum QUAL score to keep a variant (0 = no filter).
+        min_dp: Minimum INFO/DP to keep a variant (0 = no filter).
 
     Returns:
         Path to the filtered, indexed VCF (``variants.vcf.gz``).
@@ -216,20 +221,29 @@ def filter_vcf(
         ]
     )
 
-    # Keep only PASS variants
-    run_tool(
-        [
-            "bcftools",
-            "view",
-            "-f",
-            "PASS",
-            "-o",
-            str(filtered),
-            "-O",
-            "z",
-            str(norm_vcf),
-        ]
-    )
+    # Build view command with PASS filter and optional quality filters
+    view_cmd = [
+        "bcftools",
+        "view",
+        "-f",
+        "PASS",
+    ]
+    filters = []
+    if min_qual > 0:
+        filters.append(f"QUAL>={min_qual}")
+    if min_dp > 0:
+        filters.append(f"INFO/DP>={min_dp}")
+    if filters:
+        view_cmd.extend(["-i", " && ".join(filters)])
+
+    view_cmd.extend([
+        "-o",
+        str(filtered),
+        "-O",
+        "z",
+        str(norm_vcf),
+    ])
+    run_tool(view_cmd)
     run_tool(["bcftools", "index", str(filtered)])
 
     # Remove intermediate normalized VCF
@@ -245,6 +259,8 @@ def call_variants_per_allele(
     output_dir: Path,
     clair3_model: str = "",
     threads: int = 4,
+    min_qual: float = 15.0,
+    min_dp: int = 5,
 ) -> dict[str, Path]:
     """Run variant calling for each detected allele.
 
@@ -262,6 +278,8 @@ def call_variants_per_allele(
         output_dir: Base output directory.
         clair3_model: Path to Clair3 model directory (optional).
         threads: Number of threads (default 4).
+        min_qual: Minimum QUAL score for VCF filtering (default 15.0).
+        min_dp: Minimum INFO/DP for VCF filtering (default 5).
 
     Returns:
         Dictionary mapping allele key (``"allele_1"`` / ``"allele_2"``) to
@@ -308,7 +326,9 @@ def call_variants_per_allele(
         )
 
         # Filter VCF
-        filtered = filter_vcf(vcf, contig_ref, allele_dir)
+        filtered = filter_vcf(
+            vcf, contig_ref, allele_dir, min_qual=min_qual, min_dp=min_dp
+        )
         results[allele_key] = filtered
 
     return results

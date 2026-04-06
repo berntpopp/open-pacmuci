@@ -332,6 +332,45 @@ class TestCallVariantsPerAllele:
         assert "allele_1" in result
 
 
+class TestFilterVcfQuality:
+    """Tests for VCF quality filter parameters."""
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    def test_filter_vcf_includes_quality_expression(self, mock_run_tool, tmp_path):
+        """filter_vcf passes QUAL and DP filter to bcftools view."""
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
+
+        # Find the bcftools view call
+        view_calls = [
+            c[0][0]
+            for c in mock_run_tool.call_args_list
+            if c[0][0][:2] == ["bcftools", "view"]
+        ]
+        assert len(view_calls) == 1
+        view_cmd = view_calls[0]
+        assert "-i" in view_cmd
+        i_idx = view_cmd.index("-i")
+        expr = view_cmd[i_idx + 1]
+        assert "QUAL" in expr
+        assert "DP" in expr
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    def test_filter_vcf_default_params(self, mock_run_tool, tmp_path):
+        """filter_vcf works with default parameters (backward compatible)."""
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        # Should not raise with no extra args
+        filter_vcf(vcf, ref, tmp_path)
+
+
 class TestExtractAndRemapReads:
     """Tests for the private _extract_and_remap_reads helper."""
 
