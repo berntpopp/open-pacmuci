@@ -1,5 +1,17 @@
 # src/open_pacmuci/classify.py
-"""Repeat unit classification and mutation detection."""
+"""Repeat unit classification and mutation detection.
+
+The classification algorithm handles frameshifted sequences by tracking
+the cumulative indel offset.  When a repeat contains an insertion or
+deletion, subsequent window boundaries are shifted by the net indel
+length so that downstream repeats are correctly framed.
+
+For example, a dupC (1bp insertion) at repeat 25 shifts all windows
+after repeat 25 by +1bp.  Without correction, every downstream window
+would straddle two repeat boundaries and fail to match any known type.
+With correction, the windows realign to the true repeat boundaries and
+classify correctly.
+"""
 
 from __future__ import annotations
 
@@ -138,6 +150,25 @@ def characterize_differences(ref: str, query: str) -> list[dict]:
     return diffs
 
 
+def _compute_net_indel(diffs: list[dict]) -> int:
+    """Compute net indel offset from a list of differences.
+
+    Insertions add bases (positive offset), deletions remove bases
+    (negative offset).  The net offset tells us how much the sequence
+    shifted relative to the reference frame.
+
+    Returns:
+        Net indel length: positive = sequence is longer, negative = shorter.
+    """
+    offset = 0
+    for d in diffs:
+        if d["type"] == "insertion":
+            offset += len(d["alt"])
+        elif d["type"] == "deletion":
+            offset -= len(d["ref"])
+    return offset
+
+
 def classify_repeat(
     sequence: str,
     repeat_dict: RepeatDictionary,
@@ -210,6 +241,25 @@ def classify_sequence(
 ) -> dict:
     """Classify all repeat units in a consensus sequence.
 
+    Uses offset-aware windowing: when a repeat contains an indel, the
+    cumulative offset is tracked and subsequent window boundaries are
+    shifted accordingly.  This corrects for frameshift propagation --
+    a 1bp insertion at repeat 25 would otherwise misalign all downstream
+    windows.
+
+    Algorithm:
+        1. Start at position 0 with offset = 0
+        2. Extract window of ``unit_length + offset`` bases (the mutated
+           repeat is longer/shorter than 60bp)
+        3. Classify the window
+        4. If classification finds indels, compute the net offset and
+           accumulate it for subsequent windows
+        5. Advance position by ``unit_length + net_indel`` (actual length
+           of the repeat in the sequence)
+        6. Reset offset to 0 for the next window (each downstream repeat
+           is expected to be 60bp again, just starting from the shifted
+           position)
+
     Args:
         sequence: Full consensus sequence (flanking regions should be trimmed).
         repeat_dict: The loaded repeat dictionary.
@@ -217,35 +267,85 @@ def classify_sequence(
     Returns:
         Dict with structure string, per-repeat details, and mutation report.
     """
-    windows = split_into_repeats(sequence, repeat_dict.repeat_length_bp)
-
+    unit_length = repeat_dict.repeat_length_bp
+    # Maximum indel size to probe.  Covers all known MUC1 mutations
+    # (largest known: 25bp insertion, 14bp deletion).
+    max_indel_probe = 30
     repeats: list[dict] = []
     mutations: list[dict] = []
     labels: list[str] = []
 
-    for i, window in enumerate(windows):
-        result = classify_repeat(window, repeat_dict)
-        result["index"] = i + 1  # 1-based indexing
+    pos = 0
+    repeat_index = 0
+    cumulative_offset = 0
+
+    while pos < len(sequence):
+        repeat_index += 1
+
+        remaining = len(sequence) - pos
+        if remaining < unit_length // 2:
+            break
+
+        # Probe multiple window sizes around unit_length to find the
+        # best-matching window.  A dupC (1bp insertion) makes the repeat
+        # 61bp; a 14bp deletion makes it 46bp.  We try all sizes from
+        # (unit_length - max_indel) to (unit_length + max_indel) and
+        # pick the one with the lowest edit distance.
+        best_result: dict | None = None
+        best_dist = float("inf")
+        best_window_size = unit_length
+
+        for probe_size in range(
+            max(unit_length - max_indel_probe, unit_length // 2),
+            min(unit_length + max_indel_probe + 1, remaining + 1),
+        ):
+            window = sequence[pos : pos + probe_size]
+            result = classify_repeat(window, repeat_dict)
+
+            dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
+            if dist < best_dist:
+                best_dist = dist
+                best_result = result
+                best_window_size = probe_size
+
+            # Early exit on exact match
+            if dist == 0:
+                break
+
+        assert best_result is not None
+        result = best_result
+        advance = best_window_size
+
+        # Track cumulative offset if this window is non-standard size
+        if best_window_size != unit_length:
+            net_indel = best_window_size - unit_length
+            cumulative_offset += net_indel
+
+        result["index"] = repeat_index
 
         if result["match"] == "exact":
             labels.append(result["type"])
         elif result.get("classification") == "mutation":
-            labels.append(f"{result['closest_match']}*")
+            # Use MucOneUp nomenclature: "Xm" = repeat X with mutation
+            labels.append(f"{result['closest_match']}m")
             mutations.append(
                 {
-                    "repeat_index": i + 1,
+                    "repeat_index": repeat_index,
                     "closest_type": result["closest_match"],
                     "differences": result["differences"],
                     "frameshift": result.get("frameshift", False),
                 }
             )
         else:
+            # Variant of known type (substitutions only, no indel)
             labels.append(f"?{result.get('closest_match', '?')}")
 
         repeats.append(result)
+        pos += max(advance, 1)  # always advance at least 1 to avoid infinite loop
 
     return {
         "structure": " ".join(labels),
         "repeats": repeats,
         "mutations_detected": mutations,
+        "cumulative_offset": cumulative_offset,
     }
