@@ -47,6 +47,94 @@ def extract_allele_reads(
     return out_bam
 
 
+def _extract_and_remap_reads(
+    bam_path: Path,
+    cluster_contigs: list[str],
+    peak_contig: str,
+    reference_path: Path,
+    output_dir: Path,
+    threads: int = 4,
+) -> Path:
+    """Extract reads from cluster contigs, convert to FASTQ, remap to peak contig.
+
+    Reads from the ladder mapping are spread across multiple contigs in a
+    cluster (e.g. contig_48 through contig_54).  Clair3 needs all reads
+    aligned to a *single* reference contig to call variants.  This function
+    extracts the cluster reads, converts to FASTQ, extracts the single peak
+    contig as a mini-reference, and remaps with minimap2.
+
+    Args:
+        bam_path: Full ladder mapping BAM.
+        cluster_contigs: All contig names in the allele's cluster.
+        peak_contig: The single peak contig name to remap against.
+        reference_path: Full ladder reference FASTA (for extracting the contig).
+        output_dir: Working directory for intermediate files.
+        threads: Thread count for minimap2/samtools.
+
+    Returns:
+        Path to the remapped, sorted, indexed BAM.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Extract reads from all cluster contigs
+    cluster_bam = extract_allele_reads(bam_path, cluster_contigs, output_dir)
+
+    # 2. Convert to FASTQ
+    fastq_path = output_dir / "cluster_reads.fq"
+    stdout = run_tool(["samtools", "fastq", str(cluster_bam)])
+    fastq_path.write_text(stdout)
+
+    # 3. Extract peak contig as mini-reference
+    contig_ref = output_dir / f"{peak_contig}.fa"
+    stdout = run_tool(
+        [
+            "samtools",
+            "faidx",
+            str(reference_path),
+            peak_contig,
+        ]
+    )
+    contig_ref.write_text(stdout)
+    run_tool(["samtools", "faidx", str(contig_ref)])
+
+    # 4. Remap to peak contig
+    sam_path = output_dir / "remapped.sam"
+    sam_output = run_tool(
+        [
+            "minimap2",
+            "-a",
+            "-x",
+            "map-hifi",
+            "-t",
+            str(threads),
+            str(contig_ref),
+            str(fastq_path),
+        ]
+    )
+    sam_path.write_text(sam_output)
+
+    # 5. Sort and index
+    remapped_bam = output_dir / "allele_reads.bam"
+    run_tool(
+        [
+            "samtools",
+            "sort",
+            "-@",
+            str(threads),
+            "-o",
+            str(remapped_bam),
+            str(sam_path),
+        ]
+    )
+    run_tool(["samtools", "index", str(remapped_bam)])
+
+    # Clean up intermediates
+    sam_path.unlink(missing_ok=True)
+    fastq_path.unlink(missing_ok=True)
+
+    return remapped_bam
+
+
 def run_clair3(
     bam_path: Path,
     reference_path: Path,
@@ -78,6 +166,9 @@ def run_clair3(
         f"--threads={threads}",
         f"--platform={platform}",
         "--sample_name=sample",
+        # Our contigs are named contig_N, not chr1..22/X/Y, so Clair3
+        # must be told to process all contigs.
+        "--include_all_ctgs",
     ]
     if model_path:
         cmd.append(f"--model_path={model_path}")
@@ -190,23 +281,34 @@ def call_variants_per_allele(
         cluster_contigs = allele_info.get("cluster_contigs", [contig_name])
         allele_dir = output_dir / allele_key
 
-        # Extract reads from ALL contigs in the cluster for maximum coverage.
-        # Reads from neighboring contigs are the same allele -- they map to
-        # slightly different contigs due to read length variation.
-        allele_bam = extract_allele_reads(bam_path, cluster_contigs, allele_dir)
+        # Extract reads from ALL contigs in the cluster, then remap to
+        # the peak contig.  Reads spread across multiple ladder contigs
+        # due to length variation; Clair3 needs them all aligned to a
+        # single reference contig to call variants effectively.
+        allele_bam = _extract_and_remap_reads(
+            bam_path,
+            cluster_contigs,
+            contig_name,
+            reference_path,
+            allele_dir,
+            threads,
+        )
 
-        # Run Clair3
+        # Run Clair3 against the single-contig reference (created during
+        # remapping).  Using the single contig rather than the full ladder
+        # avoids Clair3 scanning 150 empty contigs.
+        contig_ref = allele_dir / f"{contig_name}.fa"
         clair3_dir = allele_dir / "clair3"
         vcf = run_clair3(
             allele_bam,
-            reference_path,
+            contig_ref,
             clair3_dir,
             model_path=clair3_model,
             threads=threads,
         )
 
         # Filter VCF
-        filtered = filter_vcf(vcf, reference_path, allele_dir)
+        filtered = filter_vcf(vcf, contig_ref, allele_dir)
         results[allele_key] = filtered
 
     return results
