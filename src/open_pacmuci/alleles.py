@@ -62,6 +62,7 @@ def _find_clusters(
     Returns:
         List of cluster dicts sorted by total_reads descending.
         Each dict has keys: center (int), total_reads (int),
+        peak_contig (int, contig with most reads),
         contigs (list of (repeat_count, reads) tuples).
     """
     passing = sorted(
@@ -84,21 +85,36 @@ def _find_clusters(
             current_cluster.append(passing[i])
     clusters.append(current_cluster)
 
-    # Compute weighted center and total reads for each cluster
+    # Compute weighted center, peak contig, and total reads for each cluster
     result: list[dict] = []
     for cluster in clusters:
         total_reads = sum(reads for _, reads in cluster)
         weighted_center = sum(pos * reads for pos, reads in cluster) / total_reads
+        peak_contig = max(cluster, key=lambda x: x[1])[0]
         result.append(
             {
                 "center": round(weighted_center),
                 "total_reads": total_reads,
+                "peak_contig": peak_contig,
                 "contigs": cluster,
             }
         )
 
     result.sort(key=lambda x: x["total_reads"], reverse=True)
     return result
+
+
+def _build_allele_info(cluster: dict) -> dict:
+    """Build allele info dict from a cluster."""
+    canonical = cluster["center"]
+    peak = cluster["peak_contig"]
+    return {
+        "length": canonical + PRE_AFTER_REPEAT_COUNT,
+        "reads": cluster["total_reads"],
+        "canonical_repeats": canonical,
+        "contig_name": f"contig_{peak}",
+        "cluster_contigs": [f"contig_{c}" for c, _ in cluster["contigs"]],
+    }
 
 
 def detect_alleles(
@@ -109,7 +125,7 @@ def detect_alleles(
 
     Finds two peak clusters in the read distribution. Each cluster represents
     one allele. Reports the total allele length (canonical repeats + 9 fixed
-    pre/after repeats).
+    pre/after repeats) and the contig names needed for downstream processing.
 
     Args:
         counts: Canonical repeat count -> mapped reads mapping from
@@ -118,8 +134,13 @@ def detect_alleles(
 
     Returns:
         Dictionary with keys ``allele_1``, ``allele_2``, and ``homozygous``.
-        Each allele has ``length`` (total repeat units) and ``reads`` (int).
-        ``allele_1`` always has at least as many reads as ``allele_2``.
+        Each allele has:
+
+        - ``length`` (int): total repeat units including pre/after
+        - ``reads`` (int): total mapped reads across the cluster
+        - ``canonical_repeats`` (int): number of canonical X repeats
+        - ``contig_name`` (str): name of the peak contig (e.g. ``"contig_51"``)
+        - ``cluster_contigs`` (list[str]): all contig names in the cluster
 
     Raises:
         ValueError: If no contig meets the minimum coverage threshold.
@@ -136,33 +157,27 @@ def detect_alleles(
             f"Max observed: {max_observed} reads."
         )
 
-    # Primary allele: cluster with most total reads
-    allele_1_canonical = clusters[0]["center"]
-    allele_1_reads = clusters[0]["total_reads"]
-    allele_1_length = allele_1_canonical + PRE_AFTER_REPEAT_COUNT
+    allele_1 = _build_allele_info(clusters[0])
 
     if len(clusters) < 2:
         return {
-            "allele_1": {"length": allele_1_length, "reads": allele_1_reads},
-            "allele_2": {"length": allele_1_length, "reads": 0},
+            "allele_1": allele_1,
+            "allele_2": {**allele_1, "reads": 0},
             "homozygous": True,
         }
 
-    # Second allele: second-largest cluster
-    allele_2_canonical = clusters[1]["center"]
-    allele_2_reads = clusters[1]["total_reads"]
-    allele_2_length = allele_2_canonical + PRE_AFTER_REPEAT_COUNT
+    allele_2 = _build_allele_info(clusters[1])
 
-    # Homozygous if both clusters center on the same length
-    if allele_1_length == allele_2_length:
+    if allele_1["length"] == allele_2["length"]:
+        allele_1["reads"] += allele_2["reads"]
         return {
-            "allele_1": {"length": allele_1_length, "reads": allele_1_reads + allele_2_reads},
-            "allele_2": {"length": allele_1_length, "reads": 0},
+            "allele_1": allele_1,
+            "allele_2": {**allele_1, "reads": 0},
             "homozygous": True,
         }
 
     return {
-        "allele_1": {"length": allele_1_length, "reads": allele_1_reads},
-        "allele_2": {"length": allele_2_length, "reads": allele_2_reads},
+        "allele_1": allele_1,
+        "allele_2": allele_2,
         "homozygous": False,
     }

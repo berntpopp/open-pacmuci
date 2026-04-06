@@ -132,3 +132,15 @@ class TestDetectAlleles:
         assert abs(lengths[0] - 60) <= 2, f"Expected ~60, got {lengths[0]}"
         assert abs(lengths[1] - 80) <= 2, f"Expected ~80, got {lengths[1]}"
         assert result["homozygous"] is False
+
+    def test_contig_name_and_cluster_fields(self):
+        """Allele result includes contig_name and cluster_contigs."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        a1 = result["allele_1"]
+        assert "contig_name" in a1
+        assert a1["contig_name"].startswith("contig_")
+        assert "cluster_contigs" in a1
+        assert isinstance(a1["cluster_contigs"], list)
+        assert "canonical_repeats" in a1
+        assert a1["length"] == a1["canonical_repeats"] + PRE_AFTER_REPEAT_COUNT

@@ -9,24 +9,27 @@ from open_pacmuci.tools import run_tool
 
 def extract_allele_reads(
     bam_path: Path,
-    contig_name: str,
+    contig_names: str | list[str],
     output_dir: Path,
 ) -> Path:
-    """Extract reads mapped to a specific contig from a BAM file.
+    """Extract reads mapped to one or more contigs from a BAM file.
 
-    Uses ``samtools view -b`` to subset the BAM to a single contig and
-    indexes the result.
+    Uses ``samtools view -b`` to subset the BAM to the specified contig(s)
+    and indexes the result.
 
     Args:
         bam_path: Path to the full mapping BAM.
-        contig_name: Name of the contig to extract (e.g. ``"contig_60"``).
+        contig_names: Single contig name or list of contig names to extract.
         output_dir: Directory for output files.
 
     Returns:
         Path to the extracted, indexed BAM file.
     """
+    if isinstance(contig_names, str):
+        contig_names = [contig_names]
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_bam = output_dir / f"reads_{contig_name}.bam"
+    out_bam = output_dir / "allele_reads.bam"
 
     run_tool(
         [
@@ -36,7 +39,7 @@ def extract_allele_reads(
             "-o",
             str(out_bam),
             str(bam_path),
-            contig_name,
+            *contig_names,
         ]
     )
     run_tool(["samtools", "index", str(out_bam)])
@@ -179,12 +182,18 @@ def call_variants_per_allele(
         if alleles.get("homozygous") and allele_key == "allele_2":
             continue
 
-        length = alleles[allele_key]["length"]
-        contig_name = f"contig_{length}"
+        allele_info = alleles[allele_key]
+        # Use the peak contig name from allele detection (contig_N where N is
+        # canonical X repeat count, NOT total length).  Fall back to computing
+        # from length for backwards compatibility with older alleles.json.
+        contig_name = allele_info.get("contig_name", f"contig_{allele_info['length']}")
+        cluster_contigs = allele_info.get("cluster_contigs", [contig_name])
         allele_dir = output_dir / allele_key
 
-        # Extract reads for this allele's contig
-        allele_bam = extract_allele_reads(bam_path, contig_name, allele_dir)
+        # Extract reads from ALL contigs in the cluster for maximum coverage.
+        # Reads from neighboring contigs are the same allele -- they map to
+        # slightly different contigs due to read length variation.
+        allele_bam = extract_allele_reads(bam_path, cluster_contigs, allele_dir)
 
         # Run Clair3
         clair3_dir = allele_dir / "clair3"
