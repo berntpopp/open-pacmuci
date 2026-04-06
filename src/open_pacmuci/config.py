@@ -47,6 +47,7 @@ class RepeatDictionary:
     source: str
     mutations: dict[str, dict]
     mutated_sequences: dict[str, tuple[str, str]]
+    seq_to_id: dict[str, str]
 
 
 def _apply_mutation(sequence: str, changes: list[dict]) -> str:
@@ -63,8 +64,7 @@ def _apply_mutation(sequence: str, changes: list[dict]) -> str:
     for change in sorted(changes, key=lambda c: c["start"], reverse=True):
         start = change["start"] - 1  # convert to 0-based
         if change["type"] == "insert":
-            for i, base in enumerate(change["sequence"]):
-                result.insert(start + i, base)
+            result[start:start] = list(change["sequence"])
         elif change["type"] == "delete":
             end = change["end"]  # 1-based inclusive end == 0-based exclusive end
             del result[start:end]
@@ -132,6 +132,7 @@ def load_repeat_dictionary(path: Path | None = None) -> RepeatDictionary:
         source=data["source"],
         mutations=mutations,
         mutated_sequences=mutated_seqs,
+        seq_to_id={seq: rid for rid, seq in data["repeats"].items()},
     )
 
 

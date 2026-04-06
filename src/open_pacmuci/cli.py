@@ -315,7 +315,7 @@ def run(
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
-    from open_pacmuci.calling import call_variants_per_allele
+    from open_pacmuci.calling import call_variants_per_allele, parse_vcf_variants
     from open_pacmuci.classify import classify_sequence
     from open_pacmuci.config import load_repeat_dictionary
     from open_pacmuci.consensus import build_consensus_per_allele
@@ -370,7 +370,7 @@ def run(
 
         # VCF-backed validation if VCF available
         if allele_key in vcf_paths:
-            vcf_variants = _parse_vcf_for_validation(vcf_paths[allele_key])
+            vcf_variants = parse_vcf_variants(vcf_paths[allele_key])
             result = validate_mutations_against_vcf(result, vcf_variants=vcf_variants)
 
         all_results[allele_key] = result
@@ -396,35 +396,6 @@ def run(
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     click.echo("Pipeline complete.")
-
-
-def _parse_vcf_for_validation(vcf_path: Path) -> list[dict]:
-    """Parse VCF variants for mutation validation."""
-    from open_pacmuci.tools import run_tool
-
-    try:
-        output = run_tool(
-            [
-                "bcftools",
-                "query",
-                "-f",
-                "%POS\\t%QUAL\\n",
-                str(vcf_path),
-            ]
-        )
-    except (RuntimeError, FileNotFoundError):
-        return []
-    variants = []
-    for line in output.strip().splitlines():
-        if not line:
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 2:
-            try:
-                variants.append({"pos": int(parts[0]), "qual": float(parts[1])})
-            except ValueError:
-                continue
-    return variants
 
 
 def _bundled_reference() -> Path:

@@ -291,6 +291,25 @@ def parse_vcf_genotypes(vcf_path: Path) -> list[dict]:
     return variants
 
 
+def parse_vcf_variants(vcf_path: Path) -> list[dict]:
+    """Parse VCF to extract variant positions and quality scores."""
+    try:
+        output = run_tool(["bcftools", "query", "-f", "%POS\\t%QUAL\\n", str(vcf_path)])
+    except RuntimeError:
+        return []
+    variants = []
+    for line in output.strip().splitlines():
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            try:
+                variants.append({"pos": int(parts[0]), "qual": float(parts[1])})
+            except ValueError:
+                continue
+    return variants
+
+
 def disambiguate_same_length_alleles(
     bam_path: Path,
     reference_path: Path,
@@ -300,15 +319,15 @@ def disambiguate_same_length_alleles(
     threads: int = 4,
     min_qual: float = 15.0,
     min_dp: int = 5,
-) -> dict[str, Path]:
+) -> dict:
     """Disambiguate same-length alleles using Clair3 genotype calls.
 
     Runs Clair3 on all reads, checks for heterozygous (0/1) variants.
     If found, creates two VCFs: one with only hom-alt variants (WT allele),
     one with all variants (mutant allele).
 
-    Returns dict mapping allele key to filtered VCF path.
-    Updates alleles["homozygous"] based on findings.
+    Returns dict mapping allele key to filtered VCF path, plus a
+    ``"homozygous"`` boolean key indicating whether the alleles are identical.
     """
     allele_info = alleles["allele_1"]
     contig_name = allele_info["contig_name"]
@@ -342,19 +361,19 @@ def disambiguate_same_length_alleles(
     het_variants = [
         v
         for v in variants
-        if "/" in v["genotype"] and v["genotype"] not in ("0/0", "1/1", "./.", ".|.")
+        if any(sep in v["genotype"] for sep in ("/", "|"))
+        and v["genotype"] not in ("0/0", "1/1", "./.", "0|0", "1|1", ".|.")
     ]
 
-    results: dict[str, Path] = {}
+    results: dict = {}
 
     if not het_variants:
         # Truly homozygous -- no het variants found
-        alleles["homozygous"] = True
         results["allele_1"] = filtered_vcf
+        results["homozygous"] = True
         return results
 
     # Compound heterozygous -- split into two VCFs
-    alleles["homozygous"] = False
 
     # allele_1 (WT): exclude het variants, keep only hom-alt
     wt_vcf = output_dir / "allele_1" / "variants.vcf.gz"
@@ -392,6 +411,10 @@ def disambiguate_same_length_alleles(
     run_tool(["bcftools", "index", str(mut_vcf)])
     results["allele_2"] = mut_vcf
 
+    # Note: bcftools consensus applies the ALT allele for het (0/1) calls
+    # by default, so the allele_2 VCF with het genotypes will produce the
+    # correct mutant consensus without needing to force hom-alt genotypes.
+    results["homozygous"] = False
     return results
 
 
@@ -431,7 +454,7 @@ def call_variants_per_allele(
         the filtered VCF path.
     """
     if alleles.get("same_length"):
-        return disambiguate_same_length_alleles(
+        disambig = disambiguate_same_length_alleles(
             bam_path,
             reference_path,
             alleles,
@@ -441,6 +464,8 @@ def call_variants_per_allele(
             min_qual,
             min_dp,
         )
+        alleles["homozygous"] = disambig.pop("homozygous")
+        return disambig
 
     results: dict[str, Path] = {}
 

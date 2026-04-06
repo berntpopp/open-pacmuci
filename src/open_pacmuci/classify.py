@@ -159,13 +159,12 @@ def classify_repeat(
         Classification result dict with type, match, and (for unknowns)
         closest_match, edit_distance, identity_pct, differences.
     """
-    # O(1) exact-match lookup via reverse map (sequence -> ID)
-    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
-    if sequence in seq_to_id:
-        return {"type": seq_to_id[sequence], "match": "exact", "confidence": 1.0}
+    # O(1) exact-match lookup via cached reverse map (sequence -> ID)
+    if sequence in repeat_dict.seq_to_id:
+        return {"type": repeat_dict.seq_to_id[sequence], "match": "exact", "confidence": 1.0}
 
     # Check mutation templates (variable-length exact matches)
-    if hasattr(repeat_dict, "mutated_sequences") and sequence in repeat_dict.mutated_sequences:
+    if repeat_dict.mutated_sequences and sequence in repeat_dict.mutated_sequences:
         parent_repeat, mut_name = repeat_dict.mutated_sequences[sequence]
         return {
             "type": f"{parent_repeat}:{mut_name}",
@@ -248,7 +247,6 @@ def _classify_backward(
     unit_length = repeat_dict.repeat_length_bp
     max_indel_probe = 30
     after_ids = list(reversed(repeat_dict.after_repeat_ids))
-    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
 
     results: list[tuple[dict, int, int]] = []
     pos = len(sequence)
@@ -258,7 +256,7 @@ def _classify_backward(
         if pos - unit_length < stop_pos:
             break
         window = sequence[pos - unit_length : pos]
-        if window in seq_to_id and seq_to_id[window] == expected_id:
+        if window in repeat_dict.seq_to_id and repeat_dict.seq_to_id[window] == expected_id:
             result = {"type": expected_id, "match": "exact", "confidence": 1.0}
             results.append((result, pos - unit_length, pos))
             pos -= unit_length
@@ -280,19 +278,16 @@ def _classify_backward(
             if start < stop_pos:
                 continue
             window = sequence[start:pos]
-            if window in seq_to_id:
+            if window in repeat_dict.seq_to_id:
                 best_result = {
-                    "type": seq_to_id[window],
+                    "type": repeat_dict.seq_to_id[window],
                     "match": "exact",
                     "confidence": 1.0,
                 }
                 best_size = probe_size
                 best_dist = 0
                 break
-            if (
-                hasattr(repeat_dict, "mutated_sequences")
-                and window in repeat_dict.mutated_sequences
-            ):
+            if repeat_dict.mutated_sequences and window in repeat_dict.mutated_sequences:
                 parent, mname = repeat_dict.mutated_sequences[window]
                 best_result = {
                     "type": f"{parent}:{mname}",
@@ -362,8 +357,7 @@ def classify_sequence(
     mutations: list[dict] = []
     labels: list[str] = []
 
-    # Build reverse maps once for O(1) exact-match lookups
-    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
+    # Use cached reverse map for O(1) exact-match lookups
 
     pos = 0
     repeat_index = 0
@@ -391,10 +385,7 @@ def classify_sequence(
         for probe_size in _probe_sizes_generator(unit_length, max_indel_probe, remaining):
             window = sequence[pos : pos + probe_size]
             # Check mutation templates first (variable-length exact matches)
-            if (
-                hasattr(repeat_dict, "mutated_sequences")
-                and window in repeat_dict.mutated_sequences
-            ):
+            if repeat_dict.mutated_sequences and window in repeat_dict.mutated_sequences:
                 parent, mname = repeat_dict.mutated_sequences[window]
                 best_result = {
                     "type": f"{parent}:{mname}",
@@ -408,9 +399,9 @@ def classify_sequence(
                 exact_found = True
                 break
             # Check standard repeats
-            if window in seq_to_id and canonical_result is None:
+            if window in repeat_dict.seq_to_id and canonical_result is None:
                 canonical_result = {
-                    "type": seq_to_id[window],
+                    "type": repeat_dict.seq_to_id[window],
                     "match": "exact",
                     "confidence": 1.0,
                 }
@@ -463,6 +454,17 @@ def classify_sequence(
 
         if result["match"] == "exact":
             labels.append(result["type"])
+            # Track template-matched mutations in mutations_detected
+            if result.get("mutation_name"):
+                mutations.append(
+                    {
+                        "repeat_index": repeat_index,
+                        "closest_type": result.get("parent_repeat", result["type"]),
+                        "mutation_name": result["mutation_name"],
+                        "template_match": True,
+                        "frameshift": True,  # known mutations are frameshifts
+                    }
+                )
         elif result.get("classification") == "mutation":
             # Use MucOneUp nomenclature: "Xm" = repeat X with mutation
             labels.append(f"{result['closest_match']}m")
