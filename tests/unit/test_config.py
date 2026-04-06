@@ -156,14 +156,14 @@ class TestMutationCatalog:
         assert found_dupc
 
     def test_dupc_sequence_is_61bp(self):
-        """dupC on X inserts C at position 59, producing 61bp."""
+        """dupC on X inserts C before position 60 (1-based), producing 61bp."""
         rd = load_repeat_dictionary()
         for seq, (repeat_id, mut_name) in rd.mutated_sequences.items():
             if repeat_id == "X" and mut_name == "dupC":
                 assert len(seq) == 61
-                # The inserted C is at position 60 (0-indexed) = after the full 60bp
+                # dupC inserts C before 1-based pos 60 = 0-based index 59
                 x_seq = rd.repeats["X"]
-                assert seq == x_seq[:60] + "C"
+                assert seq == x_seq[:59] + "C" + x_seq[59:]
                 break
         else:
             pytest.fail("dupC on X not found in mutated_sequences")

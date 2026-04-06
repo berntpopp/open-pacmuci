@@ -99,10 +99,10 @@ class TestClassifyRepeat:
         assert result["match"] == "exact"
 
     def test_unknown_with_insertion(self, repeat_dict):
-        """Repeat X with 1bp insertion is classified as mutation."""
+        """Repeat X with novel 1bp insertion is classified as mutation."""
         x_seq = repeat_dict.repeats["X"]
-        # Simulate 59dupC: insert C at position 59
-        mutated = x_seq[:59] + "C" + x_seq[59:]
+        # Novel insertion at position 30 (not in any mutation template)
+        mutated = x_seq[:30] + "T" + x_seq[30:]  # 61bp, novel
         result = classify_repeat(mutated, repeat_dict)
         assert result["match"] != "exact"
         assert result["closest_match"] == "X"
@@ -120,9 +120,10 @@ class TestClassifyRepeat:
         assert result["type"] == "X:del18_31"
 
     def test_identity_pct_reported(self, repeat_dict):
-        """Identity percentage is included in result."""
+        """Identity percentage is included in result for novel mutations."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]  # 1bp insertion
+        # Novel insertion (not in template catalog)
+        mutated = x_seq[:30] + "T" + x_seq[30:]
         result = classify_repeat(mutated, repeat_dict)
         assert "identity_pct" in result
         assert result["identity_pct"] > 90.0
@@ -141,9 +142,10 @@ class TestClassifySequence:
         assert result["structure"] == "X X X"
 
     def test_mutation_detected(self, repeat_dict):
-        """Mutation in one repeat is detected and reported."""
+        """Novel mutation in one repeat is detected and reported."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]  # 59dupC
+        # Novel 2bp insertion (not in template catalog) -> lands in mutations_detected
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
         full_seq = x_seq + mutated + x_seq
         result = classify_sequence(full_seq, repeat_dict)
         assert len(result["mutations_detected"]) >= 1
@@ -161,7 +163,8 @@ class TestConfidenceScoring:
     def test_close_match_confidence_uses_identity(self, repeat_dict):
         """Near-match (ed=1) confidence equals identity_pct / 100."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]  # 61bp, ed=1
+        # Novel insertion not in template catalog
+        mutated = x_seq[:30] + "T" + x_seq[30:]  # 61bp, ed=1
         result = classify_repeat(mutated, repeat_dict)
         assert 0.9 < result["confidence"] < 1.0
         assert result["confidence"] == result["identity_pct"] / 100
@@ -184,9 +187,10 @@ class TestSequenceConfidenceSummary:
         assert result["exact_match_pct"] == 100.0
 
     def test_mixed_match_reduces_confidence(self, repeat_dict):
-        """One mutation among exact matches reduces allele_confidence below 1.0."""
+        """One novel mutation among exact matches reduces allele_confidence below 1.0."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]
+        # Novel 2bp insertion (not in template catalog)
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
         result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
         assert result["allele_confidence"] < 1.0
         assert result["exact_match_pct"] < 100.0
@@ -197,8 +201,11 @@ class TestMutationTemplateMatching:
 
     def test_dupc_exact_template_match(self, repeat_dict):
         """dupC on X matches the pre-computed 61bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
         x_seq = repeat_dict.repeats["X"]
-        dupc_seq = x_seq[:60] + "C"  # 61bp: insert C at end
+        dupc_seq = _apply_mutation(x_seq, repeat_dict.mutations["dupC"]["changes"])
+        assert len(dupc_seq) == 61
         result = classify_repeat(dupc_seq, repeat_dict)
         assert result["match"] == "exact"
         assert result["type"] == "X:dupC"
@@ -206,8 +213,11 @@ class TestMutationTemplateMatching:
 
     def test_ins16bp_exact_template_match(self, repeat_dict):
         """16bp insertion on C matches the 76bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
         c_seq = repeat_dict.repeats["C"]
-        ins_seq = c_seq[:57] + "GGGCTCCACCGCCCCC" + c_seq[57:]  # 76bp
+        ins_seq = _apply_mutation(c_seq, repeat_dict.mutations["ins16bp"]["changes"])
+        assert len(ins_seq) == 76
         result = classify_repeat(ins_seq, repeat_dict)
         assert result["match"] == "exact"
         assert result["type"] == "C:ins16bp"
@@ -215,16 +225,21 @@ class TestMutationTemplateMatching:
 
     def test_del18_31_exact_template_match(self, repeat_dict):
         """14bp deletion on X matches the 46bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
         x_seq = repeat_dict.repeats["X"]
-        del_seq = x_seq[:17] + x_seq[31:]  # 46bp: delete pos 18-31 (1-based)
+        del_seq = _apply_mutation(x_seq, repeat_dict.mutations["del18_31"]["changes"])
+        assert len(del_seq) == 46
         result = classify_repeat(del_seq, repeat_dict)
         assert result["match"] == "exact"
         assert result["type"] == "X:del18_31"
 
     def test_sequence_with_dupc_classifies_correctly(self, repeat_dict):
         """classify_sequence finds dupC at correct window size."""
+        from open_pacmuci.config import _apply_mutation
+
         x_seq = repeat_dict.repeats["X"]
-        dupc_seq = x_seq[:60] + "C"  # 61bp
+        dupc_seq = _apply_mutation(x_seq, repeat_dict.mutations["dupC"]["changes"])
         full = x_seq + dupc_seq + x_seq
         result = classify_sequence(full, repeat_dict)
         assert len(result["repeats"]) == 3
@@ -233,9 +248,11 @@ class TestMutationTemplateMatching:
 
     def test_sequence_with_16bp_ins_classifies_correctly(self, repeat_dict):
         """classify_sequence handles 76bp mutated repeat with template match."""
+        from open_pacmuci.config import _apply_mutation
+
         x_seq = repeat_dict.repeats["X"]
         c_seq = repeat_dict.repeats["C"]
-        ins_seq = c_seq[:57] + "GGGCTCCACCGCCCCC" + c_seq[57:]
+        ins_seq = _apply_mutation(c_seq, repeat_dict.mutations["ins16bp"]["changes"])
         full = x_seq + ins_seq + x_seq
         result = classify_sequence(full, repeat_dict)
         assert len(result["repeats"]) == 3

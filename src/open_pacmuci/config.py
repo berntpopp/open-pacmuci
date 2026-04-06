@@ -52,7 +52,11 @@ class RepeatDictionary:
 def _apply_mutation(sequence: str, changes: list[dict]) -> str:
     """Apply mutation changes to a repeat sequence.
 
-    Uses 1-based indexing (matching MucOneUp/Vrbacka conventions).
+    Uses 1-based indexing (matching MucOneUp/Vrbacka conventions):
+    ``start=60`` means "insert before position 60 (1-based)" which is
+    0-based index 59.  Python's ``list.insert(i, x)`` inserts before
+    index ``i``, so we use ``insert(start - 1, ...)``.
+
     Changes are applied in reverse order to preserve indices.
     """
     result = list(sequence)
@@ -60,7 +64,7 @@ def _apply_mutation(sequence: str, changes: list[dict]) -> str:
         start = change["start"] - 1  # convert to 0-based
         if change["type"] == "insert":
             for i, base in enumerate(change["sequence"]):
-                result.insert(start + 1 + i, base)
+                result.insert(start + i, base)
         elif change["type"] == "delete":
             end = change["end"]  # 1-based inclusive end == 0-based exclusive end
             del result[start:end]
