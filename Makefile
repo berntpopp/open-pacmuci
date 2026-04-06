@@ -1,4 +1,4 @@
-.PHONY: help init install-uv install dev test test-fast test-unit test-int lint lint-fix format format-check type-check check ci-check clean generate-testdata
+.PHONY: help init install-uv install dev conda-setup test test-fast test-unit test-int lint lint-fix format format-check type-check check ci-check clean generate-testdata lock sync
 
 help:  ## Show this help message
 	@echo "Usage: make [target]"
@@ -75,15 +75,15 @@ ci-check:  ## Run EXACT same checks as GitHub Actions CI
 	@echo ""
 	@echo "=== Code Quality Checks ==="
 	@echo "1. Ruff linter..."
-	ruff check src/open_pacmuci/ tests/
+	uv run ruff check src/open_pacmuci/ tests/
 	@echo "2. Ruff formatter check..."
-	ruff format --check src/open_pacmuci/ tests/
+	uv run ruff format --check src/open_pacmuci/ tests/
 	@echo "3. Mypy type checker..."
-	mypy src/open_pacmuci/ || true
+	uv run mypy src/open_pacmuci/ || true
 	@echo ""
 	@echo "=== Test Suite ==="
 	@echo "4. Running pytest with coverage..."
-	pytest --cov=open_pacmuci --cov-report=term-missing
+	uv run pytest --cov=open_pacmuci --cov-report=term-missing
 	@echo ""
 	@echo "All CI checks passed!"
 
