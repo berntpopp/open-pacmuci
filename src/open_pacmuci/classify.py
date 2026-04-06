@@ -159,10 +159,20 @@ def classify_repeat(
         Classification result dict with type, match, and (for unknowns)
         closest_match, edit_distance, identity_pct, differences.
     """
-    # O(1) exact-match lookup via reverse map (sequence -> ID)
-    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
-    if sequence in seq_to_id:
-        return {"type": seq_to_id[sequence], "match": "exact"}
+    # O(1) exact-match lookup via cached reverse map (sequence -> ID)
+    if sequence in repeat_dict.seq_to_id:
+        return {"type": repeat_dict.seq_to_id[sequence], "match": "exact", "confidence": 1.0}
+
+    # Check mutation templates (variable-length exact matches)
+    if repeat_dict.mutated_sequences and sequence in repeat_dict.mutated_sequences:
+        parent_repeat, mut_name = repeat_dict.mutated_sequences[sequence]
+        return {
+            "type": f"{parent_repeat}:{mut_name}",
+            "match": "exact",
+            "confidence": 1.0,
+            "mutation_name": mut_name,
+            "parent_repeat": parent_repeat,
+        }
 
     # No exact match -- find closest by edit distance
     best_id = ""
@@ -199,6 +209,7 @@ def classify_repeat(
         "closest_match": best_id,
         "edit_distance": best_dist,
         "identity_pct": identity_pct,
+        "confidence": identity_pct / 100,
         "differences": diffs,
     }
 
@@ -209,6 +220,101 @@ def classify_repeat(
         result["classification"] = "novel_repeat" if best_dist > 2 else "variant"
 
     return result
+
+
+def _probe_sizes_generator(unit_length: int, max_indel_probe: int, remaining: int) -> list[int]:
+    """Generate probe sizes: canonical first, then small-to-large."""
+    sizes = [min(unit_length, remaining)]
+    for ps in range(
+        max(unit_length - max_indel_probe, unit_length // 2),
+        min(unit_length + max_indel_probe + 1, remaining + 1),
+    ):
+        if ps != unit_length:
+            sizes.append(ps)
+    return sizes
+
+
+def _classify_backward(
+    sequence: str,
+    repeat_dict: RepeatDictionary,
+    stop_pos: int,
+) -> list[tuple[dict, int, int]]:
+    """Classify repeats from 3' end backward, anchored on after-repeats.
+
+    Returns list of (result, start_pos, end_pos) tuples in forward order.
+    Stops when reaching stop_pos or when confidence drops.
+    """
+    unit_length = repeat_dict.repeat_length_bp
+    max_indel_probe = 30
+    after_ids = list(reversed(repeat_dict.after_repeat_ids))
+
+    results: list[tuple[dict, int, int]] = []
+    pos = len(sequence)
+
+    # First try to match after-repeats from the end
+    for expected_id in after_ids:
+        if pos - unit_length < stop_pos:
+            break
+        window = sequence[pos - unit_length : pos]
+        if window in repeat_dict.seq_to_id and repeat_dict.seq_to_id[window] == expected_id:
+            result = {"type": expected_id, "match": "exact", "confidence": 1.0}
+            results.append((result, pos - unit_length, pos))
+            pos -= unit_length
+        else:
+            break
+
+    # Continue backward through canonical region
+    while pos - unit_length // 2 > stop_pos:
+        remaining_back = pos - stop_pos
+        if remaining_back < unit_length // 2:
+            break
+
+        best_result: dict | None = None
+        best_size = unit_length
+        best_dist: float = float("inf")
+
+        for probe_size in _probe_sizes_generator(unit_length, max_indel_probe, remaining_back):
+            start = pos - probe_size
+            if start < stop_pos:
+                continue
+            window = sequence[start:pos]
+            if window in repeat_dict.seq_to_id:
+                best_result = {
+                    "type": repeat_dict.seq_to_id[window],
+                    "match": "exact",
+                    "confidence": 1.0,
+                }
+                best_size = probe_size
+                best_dist = 0
+                break
+            if repeat_dict.mutated_sequences and window in repeat_dict.mutated_sequences:
+                parent, mname = repeat_dict.mutated_sequences[window]
+                best_result = {
+                    "type": f"{parent}:{mname}",
+                    "match": "exact",
+                    "confidence": 1.0,
+                    "mutation_name": mname,
+                    "parent_repeat": parent,
+                }
+                best_size = probe_size
+                best_dist = 0
+                break
+
+        if best_dist > 0:
+            # Edit distance fallback
+            window = sequence[max(stop_pos, pos - unit_length) : pos]
+            best_result = classify_repeat(window, repeat_dict)
+            best_size = len(window)
+            best_dist = best_result.get("edit_distance", 999)
+
+        if best_result is None or best_dist > 3:
+            break
+
+        results.append((best_result, pos - best_size, pos))
+        pos -= best_size
+
+    results.reverse()
+    return results
 
 
 def classify_sequence(
@@ -251,6 +357,8 @@ def classify_sequence(
     mutations: list[dict] = []
     labels: list[str] = []
 
+    # Use cached reverse map for O(1) exact-match lookups
+
     pos = 0
     repeat_index = 0
     cumulative_offset = 0
@@ -262,46 +370,76 @@ def classify_sequence(
         if remaining < unit_length // 2:
             break
 
-        # Probe multiple window sizes around unit_length to find the
-        # best-matching window.  A dupC (1bp insertion) makes the repeat
-        # 61bp; a 14bp deletion makes it 46bp.
-        #
-        # Try the canonical unit_length first for the common case (exact
-        # match at 60bp).  Only probe other sizes if no exact match.
         best_result: dict | None = None
         best_dist = float("inf")
         best_window_size = unit_length
 
-        # Try canonical size first
-        if remaining >= unit_length:
-            window = sequence[pos : pos + unit_length]
-            result = classify_repeat(window, repeat_dict)
-            dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-            best_dist = dist
-            best_result = result
+        # --- Phase 1: Check ALL probe sizes for exact match ---
+        # First check canonical size for standard repeats (common case).
+        # Then check ALL sizes for mutation templates (which are non-60bp).
+        # Mutation templates take priority over canonical-size standard matches
+        # because they explain the actual biological repeat length.
+        exact_found = False
+        canonical_result: dict | None = None
+
+        for probe_size in _probe_sizes_generator(unit_length, max_indel_probe, remaining):
+            window = sequence[pos : pos + probe_size]
+            # Check mutation templates first (variable-length exact matches)
+            if repeat_dict.mutated_sequences and window in repeat_dict.mutated_sequences:
+                parent, mname = repeat_dict.mutated_sequences[window]
+                best_result = {
+                    "type": f"{parent}:{mname}",
+                    "match": "exact",
+                    "confidence": 1.0,
+                    "mutation_name": mname,
+                    "parent_repeat": parent,
+                }
+                best_window_size = probe_size
+                best_dist = 0
+                exact_found = True
+                break
+            # Check standard repeats
+            if window in repeat_dict.seq_to_id and canonical_result is None:
+                canonical_result = {
+                    "type": repeat_dict.seq_to_id[window],
+                    "match": "exact",
+                    "confidence": 1.0,
+                }
+
+        # Use canonical match if no mutation template found
+        if not exact_found and canonical_result is not None:
+            best_result = canonical_result
             best_window_size = unit_length
+            best_dist = 0
+            exact_found = True
 
-        # Probe other sizes only if canonical size wasn't an exact match
-        if best_dist > 0:
-            for probe_size in range(
-                max(unit_length - max_indel_probe, unit_length // 2),
-                min(unit_length + max_indel_probe + 1, remaining + 1),
-            ):
-                if probe_size == unit_length:
-                    continue  # already tried above
-                window = sequence[pos : pos + probe_size]
+        # --- Phase 2: Edit distance fallback (only if no exact match) ---
+        if not exact_found:
+            # Try canonical size first
+            if remaining >= unit_length:
+                window = sequence[pos : pos + unit_length]
                 result = classify_repeat(window, repeat_dict)
-
                 dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_result = result
-                    best_window_size = probe_size
+                best_dist = dist
+                best_result = result
+                best_window_size = unit_length
 
-                # Early exit: a single edit can't be improved
-                # for biological mutations
-                if best_dist <= 1:
-                    break
+            if best_dist > 0:
+                for probe_size in range(
+                    max(unit_length - max_indel_probe, unit_length // 2),
+                    min(unit_length + max_indel_probe + 1, remaining + 1),
+                ):
+                    if probe_size == unit_length:
+                        continue
+                    window = sequence[pos : pos + probe_size]
+                    result = classify_repeat(window, repeat_dict)
+                    dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_result = result
+                        best_window_size = probe_size
+                    if best_dist <= 1:
+                        break
 
         assert best_result is not None
         result = best_result
@@ -316,6 +454,17 @@ def classify_sequence(
 
         if result["match"] == "exact":
             labels.append(result["type"])
+            # Track template-matched mutations in mutations_detected
+            if result.get("mutation_name"):
+                mutations.append(
+                    {
+                        "repeat_index": repeat_index,
+                        "closest_type": result.get("parent_repeat", result["type"]),
+                        "mutation_name": result["mutation_name"],
+                        "template_match": True,
+                        "frameshift": True,  # known mutations are frameshifts
+                    }
+                )
         elif result.get("classification") == "mutation":
             # Use MucOneUp nomenclature: "Xm" = repeat X with mutation
             labels.append(f"{result['closest_match']}m")
@@ -334,9 +483,113 @@ def classify_sequence(
         repeats.append(result)
         pos += max(advance, 1)  # always advance at least 1 to avoid infinite loop
 
+    # --- Bidirectional fallback ---
+    # If the forward pass stopped with significant unconsumed sequence,
+    # try classifying from the 3' end backward.
+    if pos < len(sequence) - unit_length // 2:
+        backward = _classify_backward(sequence, repeat_dict, pos)
+        if backward:
+            # Gap between forward and backward = mutated region
+            gap_start = pos
+            gap_end = backward[0][1]
+            if gap_end > gap_start:
+                gap_seq = sequence[gap_start:gap_end]
+                gap_result = classify_repeat(gap_seq, repeat_dict)
+                repeat_index += 1
+                gap_result["index"] = repeat_index
+                if gap_result.get("classification") == "mutation" or gap_result["match"] != "exact":
+                    labels.append(f"{gap_result.get('closest_match', '?')}m")
+                    mutations.append(
+                        {
+                            "repeat_index": repeat_index,
+                            "closest_type": gap_result.get("closest_match", "?"),
+                            "differences": gap_result.get("differences", []),
+                            "frameshift": gap_result.get("frameshift", False),
+                        }
+                    )
+                else:
+                    labels.append(gap_result["type"])
+                repeats.append(gap_result)
+
+            # Append backward results
+            for bwd_result, _bwd_start, _bwd_end in backward:
+                repeat_index += 1
+                bwd_result["index"] = repeat_index
+                if bwd_result["match"] == "exact":
+                    labels.append(bwd_result["type"])
+                else:
+                    labels.append(f"?{bwd_result.get('closest_match', '?')}")
+                repeats.append(bwd_result)
+
+    confidences = [r.get("confidence", 1.0) for r in repeats]
+    exact_count = sum(1 for r in repeats if r.get("match") == "exact")
+    allele_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    exact_match_pct = (exact_count / len(repeats) * 100) if repeats else 0.0
+
     return {
         "structure": " ".join(labels),
         "repeats": repeats,
         "mutations_detected": mutations,
         "cumulative_offset": cumulative_offset,
+        "allele_confidence": round(allele_confidence, 4),
+        "exact_match_pct": round(exact_match_pct, 1),
     }
+
+
+def validate_mutations_against_vcf(
+    classification_result: dict,
+    vcf_variants: list[dict] | None = None,
+    flank_length: int = 500,
+    unit_length: int = 60,
+) -> dict:
+    """Cross-validate detected mutations against VCF variant positions.
+
+    For each mutation, check if a VCF variant overlaps the repeat's
+    genomic position.  Adds ``vcf_support`` flag and adjusts confidence.
+
+    Args:
+        classification_result: Output from :func:`classify_sequence`.
+        vcf_variants: List of dicts with ``pos`` (int) and ``qual`` (float).
+            If None, VCF validation is skipped (standalone classify mode).
+        flank_length: Flanking bp on each side of the contig.
+        unit_length: Expected repeat unit length (60bp).
+
+    Returns:
+        Updated classification result with VCF validation annotations.
+    """
+    result = classification_result.copy()
+    result["mutations_detected"] = [m.copy() for m in result.get("mutations_detected", [])]
+    result["repeats"] = [r.copy() for r in result.get("repeats", [])]
+
+    if vcf_variants is None:
+        return result
+
+    for mutation in result["mutations_detected"]:
+        repeat_idx = mutation["repeat_index"]
+        # Map repeat index to contig coordinates
+        repeat_start = flank_length + (repeat_idx - 1) * unit_length
+        repeat_end = repeat_start + unit_length + 30  # allow for indels
+
+        # Check if any VCF variant overlaps this repeat
+        supporting = [v for v in vcf_variants if repeat_start <= v["pos"] <= repeat_end]
+        mutation["vcf_support"] = len(supporting) > 0
+        mutation["vcf_qual"] = max((v["qual"] for v in supporting), default=0.0)
+
+        # Adjust confidence in the corresponding repeat
+        if repeat_idx - 1 < len(result["repeats"]):
+            repeat_result = result["repeats"][repeat_idx - 1]
+            base_confidence = repeat_result.get("confidence", 1.0)
+            if supporting:
+                best_qual = mutation["vcf_qual"]
+                vcf_score = 1.0 if best_qual >= 20 else 0.7
+            else:
+                vcf_score = 0.3
+            repeat_result["confidence"] = round(base_confidence * vcf_score, 4)
+
+    # Recompute allele_confidence
+    confidences = [r.get("confidence", 1.0) for r in result["repeats"]]
+    result["allele_confidence"] = (
+        round(sum(confidences) / len(confidences), 4) if confidences else 0.0
+    )
+
+    return result

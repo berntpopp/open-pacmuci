@@ -45,6 +45,53 @@ class RepeatDictionary:
     flanking_right: str
     vntr_region: str
     source: str
+    mutations: dict[str, dict]
+    mutated_sequences: dict[str, tuple[str, str]]
+    seq_to_id: dict[str, str]
+
+
+def _apply_mutation(sequence: str, changes: list[dict]) -> str:
+    """Apply mutation changes to a repeat sequence.
+
+    Uses 1-based indexing (matching MucOneUp/Vrbacka conventions):
+    ``start=60`` means "insert before position 60 (1-based)" which is
+    0-based index 59.  Python's ``list.insert(i, x)`` inserts before
+    index ``i``, so we use ``insert(start - 1, ...)``.
+
+    Changes are applied in reverse order to preserve indices.
+    """
+    result = list(sequence)
+    for change in sorted(changes, key=lambda c: c["start"], reverse=True):
+        start = change["start"] - 1  # convert to 0-based
+        if change["type"] == "insert":
+            result[start:start] = list(change["sequence"])
+        elif change["type"] == "delete":
+            end = change["end"]  # 1-based inclusive end == 0-based exclusive end
+            del result[start:end]
+        elif change["type"] == "delete_insert":
+            end = change["end"]  # 1-based inclusive end == 0-based exclusive end
+            result[start:end] = list(change["sequence"])
+    return "".join(result)
+
+
+def _precompute_mutated_sequences(
+    repeats: dict[str, str],
+    mutations: dict[str, dict],
+) -> dict[str, tuple[str, str]]:
+    """Pre-compute mutated sequences for all (repeat, mutation) combinations.
+
+    Returns:
+        Dict mapping mutated DNA sequence -> (parent_repeat_id, mutation_name).
+    """
+    result: dict[str, tuple[str, str]] = {}
+    for mut_name, mut_def in mutations.items():
+        for repeat_id in mut_def["allowed_repeats"]:
+            if repeat_id not in repeats:
+                continue
+            seq = repeats[repeat_id]
+            mutated = _apply_mutation(seq, mut_def["changes"])
+            result[mutated] = (repeat_id, mut_name)
+    return result
 
 
 def load_repeat_dictionary(path: Path | None = None) -> RepeatDictionary:
@@ -67,6 +114,11 @@ def load_repeat_dictionary(path: Path | None = None) -> RepeatDictionary:
 
     data = json.loads(resolved.read_text(encoding="utf-8"))
 
+    mutations_raw = data.get("mutations", {})
+    # Filter to real mutations only (exclude any with type=synthetic)
+    mutations = {k: v for k, v in mutations_raw.items() if v.get("type", "real") != "synthetic"}
+    mutated_seqs = _precompute_mutated_sequences(data["repeats"], mutations)
+
     flanking = data["flanking_hg38"]
     return RepeatDictionary(
         repeats=data["repeats"],
@@ -78,6 +130,9 @@ def load_repeat_dictionary(path: Path | None = None) -> RepeatDictionary:
         flanking_right=flanking["right"],
         vntr_region=flanking["vntr_region"],
         source=data["source"],
+        mutations=mutations,
+        mutated_sequences=mutated_seqs,
+        seq_to_id={seq: rid for rid, seq in data["repeats"].items()},
     )
 
 

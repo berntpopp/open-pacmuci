@@ -284,8 +284,9 @@ def detect_alleles(
     if len(clusters) < 2:
         return {
             "allele_1": allele_1,
-            "allele_2": {**allele_1, "reads": None},
-            "homozygous": True,
+            "allele_2": {**allele_1},
+            "homozygous": False,
+            "same_length": True,
         }
 
     allele_2 = _build_allele_info(clusters[1], _get_best_contig(clusters[1]))
@@ -294,12 +295,14 @@ def detect_alleles(
         allele_1["reads"] += allele_2["reads"]
         return {
             "allele_1": allele_1,
-            "allele_2": {**allele_1, "reads": None},
-            "homozygous": True,
+            "allele_2": {**allele_1},
+            "homozygous": False,
+            "same_length": True,
         }
 
     return {
         "allele_1": allele_1,
         "allele_2": allele_2,
         "homozygous": False,
+        "same_length": False,
     }

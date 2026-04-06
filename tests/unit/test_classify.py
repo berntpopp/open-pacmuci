@@ -10,6 +10,7 @@ from open_pacmuci.classify import (
     classify_repeat,
     classify_sequence,
     edit_distance,
+    validate_mutations_against_vcf,
 )
 from open_pacmuci.config import load_repeat_dictionary
 
@@ -98,10 +99,10 @@ class TestClassifyRepeat:
         assert result["match"] == "exact"
 
     def test_unknown_with_insertion(self, repeat_dict):
-        """Repeat X with 1bp insertion is classified as mutation."""
+        """Repeat X with novel 1bp insertion is classified as mutation."""
         x_seq = repeat_dict.repeats["X"]
-        # Simulate 59dupC: insert C at position 59
-        mutated = x_seq[:59] + "C" + x_seq[59:]
+        # Novel insertion at position 30 (not in any mutation template)
+        mutated = x_seq[:30] + "T" + x_seq[30:]  # 61bp, novel
         result = classify_repeat(mutated, repeat_dict)
         assert result["match"] != "exact"
         assert result["closest_match"] == "X"
@@ -109,18 +110,20 @@ class TestClassifyRepeat:
         assert any(d["type"] == "insertion" for d in result["differences"])
 
     def test_unknown_with_large_deletion(self, repeat_dict):
-        """Repeat X with 14bp deletion is still closest to X."""
+        """Repeat X with 14bp deletion matches del18_31 template exactly."""
         x_seq = repeat_dict.repeats["X"]
-        # Simulate del18_31: delete positions 17-30 (0-indexed)
+        # Simulate del18_31: delete positions 18-31 (1-based)
         mutated = x_seq[:17] + x_seq[31:]
         result = classify_repeat(mutated, repeat_dict)
-        assert result["closest_match"] == "X"
-        assert any(d["type"] == "deletion" for d in result["differences"])
+        # Now matches the del18_31 mutation template exactly
+        assert result["match"] == "exact"
+        assert result["type"] == "X:del18_31"
 
     def test_identity_pct_reported(self, repeat_dict):
-        """Identity percentage is included in result."""
+        """Identity percentage is included in result for novel mutations."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]  # 1bp insertion
+        # Novel insertion (not in template catalog)
+        mutated = x_seq[:30] + "T" + x_seq[30:]
         result = classify_repeat(mutated, repeat_dict)
         assert "identity_pct" in result
         assert result["identity_pct"] > 90.0
@@ -139,9 +142,189 @@ class TestClassifySequence:
         assert result["structure"] == "X X X"
 
     def test_mutation_detected(self, repeat_dict):
-        """Mutation in one repeat is detected and reported."""
+        """Novel mutation in one repeat is detected and reported."""
         x_seq = repeat_dict.repeats["X"]
-        mutated = x_seq[:59] + "C" + x_seq[59:]  # 59dupC
+        # Novel 2bp insertion (not in template catalog) -> lands in mutations_detected
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
         full_seq = x_seq + mutated + x_seq
         result = classify_sequence(full_seq, repeat_dict)
         assert len(result["mutations_detected"]) >= 1
+
+
+class TestConfidenceScoring:
+    """Tests for per-repeat confidence scores."""
+
+    def test_exact_match_confidence_is_1(self, repeat_dict):
+        """Exact match to known repeat type has confidence 1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_repeat(x_seq, repeat_dict)
+        assert result["confidence"] == 1.0
+
+    def test_close_match_confidence_uses_identity(self, repeat_dict):
+        """Near-match (ed=1) confidence equals identity_pct / 100."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel insertion not in template catalog
+        mutated = x_seq[:30] + "T" + x_seq[30:]  # 61bp, ed=1
+        result = classify_repeat(mutated, repeat_dict)
+        assert 0.9 < result["confidence"] < 1.0
+        assert result["confidence"] == result["identity_pct"] / 100
+
+    def test_distant_match_has_lower_confidence(self, repeat_dict):
+        """High edit distance produces lower confidence."""
+        seq = "ACGT" * 15
+        result = classify_repeat(seq, repeat_dict)
+        assert result["confidence"] < 0.9
+
+
+class TestSequenceConfidenceSummary:
+    """Tests for per-allele confidence summary in classify_sequence."""
+
+    def test_all_exact_gives_confidence_1(self, repeat_dict):
+        """All exact matches produce allele_confidence=1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 3, repeat_dict)
+        assert result["allele_confidence"] == 1.0
+        assert result["exact_match_pct"] == 100.0
+
+    def test_mixed_match_reduces_confidence(self, repeat_dict):
+        """One novel mutation among exact matches reduces allele_confidence below 1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel 2bp insertion (not in template catalog)
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        assert result["allele_confidence"] < 1.0
+        assert result["exact_match_pct"] < 100.0
+
+
+class TestMutationTemplateMatching:
+    """Tests for exact matching against known mutation templates."""
+
+    def test_dupc_exact_template_match(self, repeat_dict):
+        """dupC on X matches the pre-computed 61bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
+        x_seq = repeat_dict.repeats["X"]
+        dupc_seq = _apply_mutation(x_seq, repeat_dict.mutations["dupC"]["changes"])
+        assert len(dupc_seq) == 61
+        result = classify_repeat(dupc_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "X:dupC"
+        assert result["confidence"] == 1.0
+
+    def test_ins16bp_exact_template_match(self, repeat_dict):
+        """16bp insertion on C matches the 76bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
+        c_seq = repeat_dict.repeats["C"]
+        ins_seq = _apply_mutation(c_seq, repeat_dict.mutations["ins16bp"]["changes"])
+        assert len(ins_seq) == 76
+        result = classify_repeat(ins_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "C:ins16bp"
+        assert result["confidence"] == 1.0
+
+    def test_del18_31_exact_template_match(self, repeat_dict):
+        """14bp deletion on X matches the 46bp template exactly."""
+        from open_pacmuci.config import _apply_mutation
+
+        x_seq = repeat_dict.repeats["X"]
+        del_seq = _apply_mutation(x_seq, repeat_dict.mutations["del18_31"]["changes"])
+        assert len(del_seq) == 46
+        result = classify_repeat(del_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "X:del18_31"
+
+    def test_sequence_with_dupc_classifies_correctly(self, repeat_dict):
+        """classify_sequence finds dupC at correct window size."""
+        from open_pacmuci.config import _apply_mutation
+
+        x_seq = repeat_dict.repeats["X"]
+        dupc_seq = _apply_mutation(x_seq, repeat_dict.mutations["dupC"]["changes"])
+        full = x_seq + dupc_seq + x_seq
+        result = classify_sequence(full, repeat_dict)
+        assert len(result["repeats"]) == 3
+        assert result["repeats"][1]["type"] == "X:dupC"
+        assert result["repeats"][1]["match"] == "exact"
+
+    def test_sequence_with_16bp_ins_classifies_correctly(self, repeat_dict):
+        """classify_sequence handles 76bp mutated repeat with template match."""
+        from open_pacmuci.config import _apply_mutation
+
+        x_seq = repeat_dict.repeats["X"]
+        c_seq = repeat_dict.repeats["C"]
+        ins_seq = _apply_mutation(c_seq, repeat_dict.mutations["ins16bp"]["changes"])
+        full = x_seq + ins_seq + x_seq
+        result = classify_sequence(full, repeat_dict)
+        assert len(result["repeats"]) == 3
+        assert result["repeats"][1]["type"] == "C:ins16bp"
+
+
+class TestVcfMutationValidation:
+    """Tests for VCF-backed mutation validation."""
+
+    def test_confirmed_mutation_keeps_high_confidence(self, repeat_dict):
+        """Mutation with VCF support keeps confidence unchanged."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel 2bp insertion (not in template catalog) -> lands in mutations_detected
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+
+        # Simulate VCF with a variant at repeat 2 position
+        vcf_variants = [{"pos": 560, "qual": 25.0}]  # flank(500) + 60bp
+
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=vcf_variants, flank_length=500, unit_length=60
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut.get("vcf_support") is True
+
+    def test_unsupported_mutation_gets_low_confidence(self, repeat_dict):
+        """Mutation without VCF support gets reduced confidence."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel 2bp insertion (not in template catalog)
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+
+        # No VCF variants at all
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=[], flank_length=500, unit_length=60
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut.get("vcf_support") is False
+
+    def test_no_mutations_unchanged(self, repeat_dict):
+        """Sequence with no mutations passes through unchanged."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 3, repeat_dict)
+
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=[], flank_length=500, unit_length=60
+        )
+        assert validated["mutations_detected"] == []
+
+
+class TestBidirectionalClassification:
+    """Tests for bidirectional classification fallback."""
+
+    def test_novel_large_insertion_classified_via_bidirectional(self, repeat_dict):
+        """Novel large insertion (not in templates) uses bidirectional fallback."""
+        x_seq = repeat_dict.repeats["X"]
+        pre1 = repeat_dict.repeats["1"]
+        after9 = repeat_dict.repeats["9"]
+        # Insert 20bp of random sequence into X (novel, not in templates)
+        novel_mutated = x_seq[:30] + "A" * 20 + x_seq[30:]  # 80bp
+        full = pre1 + x_seq + novel_mutated + x_seq + after9
+        result = classify_sequence(full, repeat_dict)
+        # Should classify pre1 and after9 correctly
+        labels = result["structure"].split()
+        assert labels[0] == "1"
+        assert labels[-1] == "9"
+        # The novel mutation should be detected
+        assert len(result["mutations_detected"]) >= 1 or any("m" in label for label in labels)
+
+    def test_forward_only_when_no_large_mutation(self, repeat_dict):
+        """No bidirectional needed when all repeats classify well."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 5, repeat_dict)
+        assert all(r["match"] == "exact" for r in result["repeats"])
+        assert result["allele_confidence"] == 1.0

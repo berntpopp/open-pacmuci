@@ -138,6 +138,47 @@ class TestTrimFlanking:
         assert header == ">consensus_vntr"
 
 
+class TestAnchorBasedTrim:
+    """Tests for anchor-based flanking trim."""
+
+    def test_anchor_trim_handles_indel_in_flank(self, tmp_path):
+        """Anchor trim finds correct boundary despite indel in flanking."""
+        from open_pacmuci.config import load_repeat_dictionary
+
+        rd = load_repeat_dictionary()
+        # Build a sequence: left_flank (with 1bp insertion) + pre-repeat 1 + X + after-repeat 9 + right_flank
+        left_flank = rd.flanking_left[-500:]
+        right_flank = rd.flanking_right[:500]
+        vntr = rd.repeats["1"] + rd.repeats["X"] + rd.repeats["9"]
+        # Insert a fake base in the left flank (simulating Clair3 false positive)
+        corrupted_left = left_flank[:250] + "A" + left_flank[250:]
+        sequence = corrupted_left + vntr + right_flank  # 501 + vntr + 500
+
+        fasta = tmp_path / "full.fa"
+        fasta.write_text(f">contig\n{sequence}\n")
+        output = tmp_path / "trimmed.fa"
+
+        trim_flanking(fasta, 500, output, repeat_dict=rd)
+
+        trimmed = output.read_text().strip().splitlines()
+        trimmed_seq = "".join(ln for ln in trimmed if not ln.startswith(">"))
+        # Should contain the start of repeat "1"
+        assert rd.repeats["1"][:30] in trimmed_seq
+
+    def test_anchor_trim_fallback_without_repeat_dict(self, tmp_path):
+        """Without repeat_dict, falls back to fixed-position trim."""
+        sequence = "A" * 100 + "VNTR_SEQ" + "A" * 100
+        fasta = tmp_path / "full.fa"
+        fasta.write_text(f">contig\n{sequence}\n")
+        output = tmp_path / "trimmed.fa"
+
+        trim_flanking(fasta, 100, output, repeat_dict=None)
+
+        trimmed = output.read_text().strip().splitlines()
+        trimmed_seq = "".join(ln for ln in trimmed if not ln.startswith(">"))
+        assert trimmed_seq == "VNTR_SEQ"
+
+
 class TestBuildConsensusPerAllele:
     """Tests for build_consensus_per_allele."""
 

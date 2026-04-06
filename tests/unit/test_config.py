@@ -125,3 +125,45 @@ class TestClassifyRepeatId:
         assert classify_repeat_id("1") == "pre"
         assert classify_repeat_id("6") == "after"
         assert classify_repeat_id("A") == "variable"
+
+
+class TestMutationCatalog:
+    """Tests for mutation catalog loading and sequence pre-computation."""
+
+    def test_mutations_loaded(self):
+        """Repeat dictionary loads mutation definitions."""
+        rd = load_repeat_dictionary()
+        assert hasattr(rd, "mutations")
+        assert "dupC" in rd.mutations
+
+    def test_mutation_has_required_fields(self):
+        """Each mutation has allowed_repeats and changes."""
+        rd = load_repeat_dictionary()
+        dupc = rd.mutations["dupC"]
+        assert "allowed_repeats" in dupc
+        assert "changes" in dupc
+        assert "X" in dupc["allowed_repeats"]
+
+    def test_mutated_sequences_precomputed(self):
+        """Pre-computed mutated sequences map sequence -> (repeat_id, mutation_name)."""
+        rd = load_repeat_dictionary()
+        assert hasattr(rd, "mutated_sequences")
+        assert len(rd.mutated_sequences) > 0
+        # dupC on X should produce a 61bp sequence
+        found_dupc = any(
+            name == "dupC" and repeat == "X" for seq, (repeat, name) in rd.mutated_sequences.items()
+        )
+        assert found_dupc
+
+    def test_dupc_sequence_is_61bp(self):
+        """dupC on X inserts C before position 60 (1-based), producing 61bp."""
+        rd = load_repeat_dictionary()
+        for seq, (repeat_id, mut_name) in rd.mutated_sequences.items():
+            if repeat_id == "X" and mut_name == "dupC":
+                assert len(seq) == 61
+                # dupC inserts C before 1-based pos 60 = 0-based index 59
+                x_seq = rd.repeats["X"]
+                assert seq == x_seq[:59] + "C" + x_seq[59:]
+                break
+        else:
+            pytest.fail("dupC on X not found in mutated_sequences")

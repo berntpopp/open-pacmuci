@@ -315,7 +315,7 @@ def run(
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
-    from open_pacmuci.calling import call_variants_per_allele
+    from open_pacmuci.calling import call_variants_per_allele, parse_vcf_variants
     from open_pacmuci.classify import classify_sequence
     from open_pacmuci.config import load_repeat_dictionary
     from open_pacmuci.consensus import build_consensus_per_allele
@@ -354,17 +354,29 @@ def run(
 
     # Step 4: Build consensus
     click.echo("Step 4/5: Building consensus...")
-    consensus_paths = build_consensus_per_allele(ref, vcf_paths, alleles_result, out)
+    consensus_paths = build_consensus_per_allele(
+        ref, vcf_paths, alleles_result, out, repeat_dict=rd
+    )
 
     # Step 5: Classify repeats
     click.echo("Step 5/5: Classifying repeats...")
+    from open_pacmuci.classify import validate_mutations_against_vcf
+
     all_results: dict[str, dict] = {}
     for allele_key, fa_path in consensus_paths.items():
         fa_lines = fa_path.read_text().strip().splitlines()
         sequence = "".join(line for line in fa_lines if not line.startswith(">"))
         result = classify_sequence(sequence, rd)
+
+        # VCF-backed validation if VCF available
+        if allele_key in vcf_paths:
+            vcf_variants = parse_vcf_variants(vcf_paths[allele_key])
+            result = validate_mutations_against_vcf(result, vcf_variants=vcf_variants)
+
         all_results[allele_key] = result
         click.echo(f"  {allele_key}: {result['structure']}")
+        if result.get("allele_confidence") is not None:
+            click.echo(f"    confidence: {result['allele_confidence']:.2f}")
 
     # Write combined outputs
     (out / "repeats.json").write_text(json.dumps(all_results, indent=2) + "\n")

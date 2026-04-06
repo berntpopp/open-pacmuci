@@ -8,8 +8,10 @@ from unittest.mock import patch
 from open_pacmuci.calling import (
     _extract_and_remap_reads,
     call_variants_per_allele,
+    disambiguate_same_length_alleles,
     extract_allele_reads,
     filter_vcf,
+    parse_vcf_genotypes,
     run_clair3,
 )
 
@@ -332,6 +334,43 @@ class TestCallVariantsPerAllele:
         assert "allele_1" in result
 
 
+class TestFilterVcfQuality:
+    """Tests for VCF quality filter parameters."""
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    def test_filter_vcf_includes_quality_expression(self, mock_run_tool, tmp_path):
+        """filter_vcf passes QUAL and DP filter to bcftools view."""
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
+
+        # Find the bcftools view call
+        view_calls = [
+            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
+        ]
+        assert len(view_calls) == 1
+        view_cmd = view_calls[0]
+        assert "-i" in view_cmd
+        i_idx = view_cmd.index("-i")
+        expr = view_cmd[i_idx + 1]
+        assert "QUAL" in expr
+        assert "DP" in expr
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    def test_filter_vcf_default_params(self, mock_run_tool, tmp_path):
+        """filter_vcf works with default parameters (backward compatible)."""
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        # Should not raise with no extra args
+        filter_vcf(vcf, ref, tmp_path)
+
+
 class TestExtractAndRemapReads:
     """Tests for the private _extract_and_remap_reads helper."""
 
@@ -379,3 +418,54 @@ class TestExtractAndRemapReads:
         # At least one faidx call with the peak contig name
         contig_faidx = [c for c in faidx_calls if "contig_51" in c]
         assert contig_faidx
+
+
+class TestParseVcfGenotypes:
+    """Tests for parse_vcf_genotypes."""
+
+    @patch("open_pacmuci.calling.run_tool")
+    def test_parses_genotype_fields(self, mock_run_tool):
+        mock_run_tool.return_value = "contig_51\t100\tA\tT\t0/1\n"
+        result = parse_vcf_genotypes(Path("/fake.vcf"))
+        assert len(result) == 1
+        assert result[0]["pos"] == 100
+        assert result[0]["genotype"] == "0/1"
+
+    @patch("open_pacmuci.calling.run_tool")
+    def test_handles_runtime_error(self, mock_run_tool):
+        mock_run_tool.side_effect = RuntimeError("fail")
+        assert parse_vcf_genotypes(Path("/fake.vcf")) == []
+
+
+class TestDisambiguateSameLengthAlleles:
+    """Tests for disambiguate_same_length_alleles."""
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    @patch("open_pacmuci.calling.parse_vcf_genotypes", return_value=[])
+    def test_no_het_variants_returns_homozygous(self, mock_geno, mock_run, tmp_path):
+        alleles = {
+            "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+            "allele_2": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+        }
+        result = disambiguate_same_length_alleles(
+            tmp_path / "bam", tmp_path / "ref.fa", alleles, tmp_path
+        )
+        assert "allele_1" in result
+        assert result.get("homozygous") is True
+
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    @patch(
+        "open_pacmuci.calling.parse_vcf_genotypes",
+        return_value=[{"chrom": "c", "pos": 100, "ref": "A", "alt": "T", "genotype": "0/1"}],
+    )
+    def test_het_variants_returns_two_alleles(self, mock_geno, mock_run, tmp_path):
+        alleles = {
+            "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+            "allele_2": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+        }
+        result = disambiguate_same_length_alleles(
+            tmp_path / "bam", tmp_path / "ref.fa", alleles, tmp_path
+        )
+        assert "allele_1" in result
+        assert "allele_2" in result
+        assert result.get("homozygous") is False

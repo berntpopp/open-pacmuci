@@ -73,7 +73,8 @@ def generate_sample(
         "--out-base", name,
         "--out-dir", str(sample_dir),
         "--num-haplotypes", "2",
-        "--fixed-lengths", f"{hap1_length},{hap2_length}",
+        "--fixed-lengths", str(hap1_length),
+        "--fixed-lengths", str(hap2_length),
         "--output-structure",
         "--seed", str(seed),
     ]

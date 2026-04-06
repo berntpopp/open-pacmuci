@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from open_pacmuci.config import RepeatDictionary
 from open_pacmuci.tools import run_tool
 
 logger = logging.getLogger(__name__)
@@ -45,26 +46,50 @@ def build_consensus(
     return output_path
 
 
+def _find_anchor(
+    sequence: str,
+    anchor: str,
+    expected_pos: int,
+    tolerance: int = 50,
+) -> int | None:
+    """Find anchor sequence near expected position.
+
+    Searches for an exact substring match within ``expected_pos +/- tolerance``.
+    Returns the position where the anchor ENDS (i.e., the start of the region
+    after the anchor).
+
+    Returns None if not found.
+    """
+    search_start = max(0, expected_pos - tolerance)
+    search_end = min(len(sequence), expected_pos + tolerance + len(anchor))
+    region = sequence[search_start:search_end]
+    idx = region.find(anchor)
+    if idx >= 0:
+        return search_start + idx + len(anchor)
+    return None
+
+
 def trim_flanking(
     consensus_fasta: Path,
     flank_length: int,
     output_path: Path,
+    repeat_dict: RepeatDictionary | None = None,
 ) -> Path:
     """Remove flanking sequences from a consensus FASTA, keeping only the VNTR.
 
     The ladder contigs have structure:
     ``[left_flank] [pre-repeats] [N * X] [after-repeats] [right_flank]``
 
-    Flanking sequences are genomic sequence outside the VNTR and do not
-    contain variants, so their positions are stable after ``bcftools
-    consensus``.  Trimming them is safe because Clair3 only calls variants
-    within the VNTR region where reads actually align.
+    When *repeat_dict* is provided, uses anchor-based boundary detection
+    that is resilient to indels in the flanking region (e.g. from Clair3
+    false positives).  Falls back to fixed-position trim without it.
 
     Args:
         consensus_fasta: Path to the full-contig consensus FASTA.
         flank_length: Number of flanking bp on each side (must match the
             value used during ladder generation, typically 500).
         output_path: Destination path for the trimmed FASTA.
+        repeat_dict: Optional repeat dictionary for anchor-based trimming.
 
     Returns:
         Path to the trimmed FASTA containing only the VNTR region.
@@ -84,10 +109,29 @@ def trim_flanking(
         output_path.write_text(f"{header}_vntr\n{sequence}\n")
         return output_path
 
-    # Strip flanking from both ends
-    vntr = sequence[flank_length:]
-    if flank_length > 0:
-        vntr = vntr[:-flank_length]
+    # Default: fixed-position trim
+    left_trim = flank_length
+    right_trim = len(sequence) - flank_length if flank_length > 0 else len(sequence)
+
+    # Try anchor-based trimming if repeat_dict provided
+    if repeat_dict is not None and flank_length > 0:
+        # Left anchor: last 20bp of left flank + first 20bp of pre-repeat "1"
+        if "1" in repeat_dict.repeats:
+            left_anchor = repeat_dict.flanking_left[-20:] + repeat_dict.repeats["1"][:20]
+            anchor_pos = _find_anchor(sequence, left_anchor, flank_length)
+            if anchor_pos is not None:
+                # anchor_pos points to end of anchor (= 20bp into repeat "1")
+                # We want to start at the beginning of repeat "1"
+                left_trim = anchor_pos - 20
+
+        # Right anchor: last 20bp of after-repeat "9" + first 20bp of right flank
+        if "9" in repeat_dict.repeats:
+            right_anchor = repeat_dict.repeats["9"][-20:] + repeat_dict.flanking_right[:20]
+            right_anchor_pos = _find_anchor(sequence, right_anchor, len(sequence) - flank_length)
+            if right_anchor_pos is not None:
+                right_trim = right_anchor_pos - 20  # end after repeat "9"
+
+    vntr = sequence[left_trim:right_trim]
 
     output_path.write_text(f"{header}_vntr\n{vntr}\n")
     return output_path
@@ -99,6 +143,7 @@ def build_consensus_per_allele(
     alleles: dict,
     output_dir: Path,
     flank_length: int = 500,
+    repeat_dict: RepeatDictionary | None = None,
 ) -> dict[str, Path]:
     """Build a consensus FASTA for each detected allele and trim flanking.
 
@@ -152,7 +197,7 @@ def build_consensus_per_allele(
 
         # Trim flanking to get VNTR-only sequence for classification
         trimmed = output_dir / f"consensus_{allele_key}.fa"
-        trim_flanking(full_consensus, flank_length, trimmed)
+        trim_flanking(full_consensus, flank_length, trimmed, repeat_dict=repeat_dict)
         results[allele_key] = trimmed
 
     return results
