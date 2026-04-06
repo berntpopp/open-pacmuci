@@ -237,6 +237,93 @@ def _probe_sizes_generator(
     return sizes
 
 
+def _classify_backward(
+    sequence: str,
+    repeat_dict: RepeatDictionary,
+    stop_pos: int,
+) -> list[tuple[dict, int, int]]:
+    """Classify repeats from 3' end backward, anchored on after-repeats.
+
+    Returns list of (result, start_pos, end_pos) tuples in forward order.
+    Stops when reaching stop_pos or when confidence drops.
+    """
+    unit_length = repeat_dict.repeat_length_bp
+    max_indel_probe = 30
+    after_ids = list(reversed(repeat_dict.after_repeat_ids))
+    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
+
+    results: list[tuple[dict, int, int]] = []
+    pos = len(sequence)
+
+    # First try to match after-repeats from the end
+    for expected_id in after_ids:
+        if pos - unit_length < stop_pos:
+            break
+        window = sequence[pos - unit_length : pos]
+        if window in seq_to_id and seq_to_id[window] == expected_id:
+            result = {"type": expected_id, "match": "exact", "confidence": 1.0}
+            results.append((result, pos - unit_length, pos))
+            pos -= unit_length
+        else:
+            break
+
+    # Continue backward through canonical region
+    while pos - unit_length // 2 > stop_pos:
+        remaining_back = pos - stop_pos
+        if remaining_back < unit_length // 2:
+            break
+
+        best_result: dict | None = None
+        best_size = unit_length
+        best_dist: float = float("inf")
+
+        for probe_size in _probe_sizes_generator(unit_length, max_indel_probe, remaining_back):
+            start = pos - probe_size
+            if start < stop_pos:
+                continue
+            window = sequence[start:pos]
+            if window in seq_to_id:
+                best_result = {
+                    "type": seq_to_id[window],
+                    "match": "exact",
+                    "confidence": 1.0,
+                }
+                best_size = probe_size
+                best_dist = 0
+                break
+            if (
+                hasattr(repeat_dict, "mutated_sequences")
+                and window in repeat_dict.mutated_sequences
+            ):
+                parent, mname = repeat_dict.mutated_sequences[window]
+                best_result = {
+                    "type": f"{parent}:{mname}",
+                    "match": "exact",
+                    "confidence": 1.0,
+                    "mutation_name": mname,
+                    "parent_repeat": parent,
+                }
+                best_size = probe_size
+                best_dist = 0
+                break
+
+        if best_dist > 0:
+            # Edit distance fallback
+            window = sequence[max(stop_pos, pos - unit_length) : pos]
+            best_result = classify_repeat(window, repeat_dict)
+            best_size = len(window)
+            best_dist = best_result.get("edit_distance", 999)
+
+        if best_result is None or best_dist > 3:
+            break
+
+        results.append((best_result, pos - best_size, pos))
+        pos -= best_size
+
+    results.reverse()
+    return results
+
+
 def classify_sequence(
     sequence: str,
     repeat_dict: RepeatDictionary,
@@ -402,6 +489,47 @@ def classify_sequence(
 
         repeats.append(result)
         pos += max(advance, 1)  # always advance at least 1 to avoid infinite loop
+
+    # --- Bidirectional fallback ---
+    # If the forward pass stopped with significant unconsumed sequence,
+    # try classifying from the 3' end backward.
+    if pos < len(sequence) - unit_length // 2:
+        backward = _classify_backward(sequence, repeat_dict, pos)
+        if backward:
+            # Gap between forward and backward = mutated region
+            gap_start = pos
+            gap_end = backward[0][1]
+            if gap_end > gap_start:
+                gap_seq = sequence[gap_start:gap_end]
+                gap_result = classify_repeat(gap_seq, repeat_dict)
+                repeat_index += 1
+                gap_result["index"] = repeat_index
+                if (
+                    gap_result.get("classification") == "mutation"
+                    or gap_result["match"] != "exact"
+                ):
+                    labels.append(f"{gap_result.get('closest_match', '?')}m")
+                    mutations.append(
+                        {
+                            "repeat_index": repeat_index,
+                            "closest_type": gap_result.get("closest_match", "?"),
+                            "differences": gap_result.get("differences", []),
+                            "frameshift": gap_result.get("frameshift", False),
+                        }
+                    )
+                else:
+                    labels.append(gap_result["type"])
+                repeats.append(gap_result)
+
+            # Append backward results
+            for bwd_result, _bwd_start, _bwd_end in backward:
+                repeat_index += 1
+                bwd_result["index"] = repeat_index
+                if bwd_result["match"] == "exact":
+                    labels.append(bwd_result["type"])
+                else:
+                    labels.append(f"?{bwd_result.get('closest_match', '?')}")
+                repeats.append(bwd_result)
 
     confidences = [r.get("confidence", 1.0) for r in repeats]
     exact_count = sum(1 for r in repeats if r.get("match") == "exact")

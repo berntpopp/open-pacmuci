@@ -284,3 +284,32 @@ class TestVcfMutationValidation:
             result, vcf_variants=[], flank_length=500, unit_length=60
         )
         assert validated["mutations_detected"] == []
+
+
+class TestBidirectionalClassification:
+    """Tests for bidirectional classification fallback."""
+
+    def test_novel_large_insertion_classified_via_bidirectional(self, repeat_dict):
+        """Novel large insertion (not in templates) uses bidirectional fallback."""
+        x_seq = repeat_dict.repeats["X"]
+        pre1 = repeat_dict.repeats["1"]
+        after9 = repeat_dict.repeats["9"]
+        # Insert 20bp of random sequence into X (novel, not in templates)
+        novel_mutated = x_seq[:30] + "A" * 20 + x_seq[30:]  # 80bp
+        full = pre1 + x_seq + novel_mutated + x_seq + after9
+        result = classify_sequence(full, repeat_dict)
+        # Should classify pre1 and after9 correctly
+        labels = result["structure"].split()
+        assert labels[0] == "1"
+        assert labels[-1] == "9"
+        # The novel mutation should be detected
+        assert len(result["mutations_detected"]) >= 1 or any(
+            "m" in label for label in labels
+        )
+
+    def test_forward_only_when_no_large_mutation(self, repeat_dict):
+        """No bidirectional needed when all repeats classify well."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 5, repeat_dict)
+        assert all(r["match"] == "exact" for r in result["repeats"])
+        assert result["allele_confidence"] == 1.0
