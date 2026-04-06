@@ -162,7 +162,7 @@ def classify_repeat(
     # O(1) exact-match lookup via reverse map (sequence -> ID)
     seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
     if sequence in seq_to_id:
-        return {"type": seq_to_id[sequence], "match": "exact"}
+        return {"type": seq_to_id[sequence], "match": "exact", "confidence": 1.0}
 
     # No exact match -- find closest by edit distance
     best_id = ""
@@ -199,6 +199,7 @@ def classify_repeat(
         "closest_match": best_id,
         "edit_distance": best_dist,
         "identity_pct": identity_pct,
+        "confidence": identity_pct / 100,
         "differences": diffs,
     }
 
@@ -334,9 +335,16 @@ def classify_sequence(
         repeats.append(result)
         pos += max(advance, 1)  # always advance at least 1 to avoid infinite loop
 
+    confidences = [r.get("confidence", 1.0) for r in repeats]
+    exact_count = sum(1 for r in repeats if r.get("match") == "exact")
+    allele_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    exact_match_pct = (exact_count / len(repeats) * 100) if repeats else 0.0
+
     return {
         "structure": " ".join(labels),
         "repeats": repeats,
         "mutations_detected": mutations,
         "cumulative_offset": cumulative_offset,
+        "allele_confidence": round(allele_confidence, 4),
+        "exact_match_pct": round(exact_match_pct, 1),
     }

@@ -145,3 +145,46 @@ class TestClassifySequence:
         full_seq = x_seq + mutated + x_seq
         result = classify_sequence(full_seq, repeat_dict)
         assert len(result["mutations_detected"]) >= 1
+
+
+class TestConfidenceScoring:
+    """Tests for per-repeat confidence scores."""
+
+    def test_exact_match_confidence_is_1(self, repeat_dict):
+        """Exact match to known repeat type has confidence 1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_repeat(x_seq, repeat_dict)
+        assert result["confidence"] == 1.0
+
+    def test_close_match_confidence_uses_identity(self, repeat_dict):
+        """Near-match (ed=1) confidence equals identity_pct / 100."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:59] + "C" + x_seq[59:]  # 61bp, ed=1
+        result = classify_repeat(mutated, repeat_dict)
+        assert 0.9 < result["confidence"] < 1.0
+        assert result["confidence"] == result["identity_pct"] / 100
+
+    def test_distant_match_has_lower_confidence(self, repeat_dict):
+        """High edit distance produces lower confidence."""
+        seq = "ACGT" * 15
+        result = classify_repeat(seq, repeat_dict)
+        assert result["confidence"] < 0.9
+
+
+class TestSequenceConfidenceSummary:
+    """Tests for per-allele confidence summary in classify_sequence."""
+
+    def test_all_exact_gives_confidence_1(self, repeat_dict):
+        """All exact matches produce allele_confidence=1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 3, repeat_dict)
+        assert result["allele_confidence"] == 1.0
+        assert result["exact_match_pct"] == 100.0
+
+    def test_mixed_match_reduces_confidence(self, repeat_dict):
+        """One mutation among exact matches reduces allele_confidence below 1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:59] + "C" + x_seq[59:]
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        assert result["allele_confidence"] < 1.0
+        assert result["exact_match_pct"] < 100.0
