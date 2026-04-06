@@ -10,7 +10,6 @@ from open_pacmuci.classify import (
     classify_repeat,
     classify_sequence,
     edit_distance,
-    split_into_repeats,
 )
 from open_pacmuci.config import load_repeat_dictionary
 
@@ -19,28 +18,6 @@ from open_pacmuci.config import load_repeat_dictionary
 def repeat_dict():
     """Load bundled repeat dictionary."""
     return load_repeat_dictionary()
-
-
-class TestSplitIntoRepeats:
-    """Tests for splitting consensus into 60bp windows."""
-
-    def test_exact_multiple(self):
-        """Sequence that is exact multiple of 60bp."""
-        seq = "A" * 180
-        windows = split_into_repeats(seq, 60)
-        assert len(windows) == 3
-        assert all(len(w) == 60 for w in windows)
-
-    def test_remainder_included(self):
-        """Trailing bases shorter than 60bp are included as partial."""
-        seq = "A" * 170
-        windows = split_into_repeats(seq, 60)
-        assert len(windows) == 3  # 60 + 60 + 50 (partial dropped or kept)
-        # Partial windows < 60bp should be flagged but included
-
-    def test_empty_sequence(self):
-        """Empty sequence returns empty list."""
-        assert split_into_repeats("", 60) == []
 
 
 class TestEditDistance:

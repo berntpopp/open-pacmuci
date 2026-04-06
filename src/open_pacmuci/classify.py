@@ -18,30 +18,6 @@ from __future__ import annotations
 from open_pacmuci.config import RepeatDictionary
 
 
-def split_into_repeats(sequence: str, unit_length: int = 60) -> list[str]:
-    """Split a consensus sequence into repeat-sized windows.
-
-    Args:
-        sequence: The DNA consensus sequence.
-        unit_length: Expected repeat unit length in bp (default 60).
-
-    Returns:
-        List of sequence windows. Partial trailing windows (< unit_length)
-        are included if they are at least half the unit length.
-    """
-    if not sequence:
-        return []
-
-    windows = []
-    for i in range(0, len(sequence), unit_length):
-        window = sequence[i : i + unit_length]
-        # Include partial windows if at least half length
-        if len(window) >= unit_length // 2:
-            windows.append(window)
-
-    return windows
-
-
 def edit_distance(s1: str, s2: str) -> int:
     """Compute Levenshtein edit distance between two sequences.
 
@@ -183,10 +159,10 @@ def classify_repeat(
         Classification result dict with type, match, and (for unknowns)
         closest_match, edit_distance, identity_pct, differences.
     """
-    # Try exact match first
-    for repeat_id, ref_seq in repeat_dict.repeats.items():
-        if sequence == ref_seq:
-            return {"type": repeat_id, "match": "exact"}
+    # O(1) exact-match lookup via reverse map (sequence -> ID)
+    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
+    if sequence in seq_to_id:
+        return {"type": seq_to_id[sequence], "match": "exact"}
 
     # No exact match -- find closest by edit distance
     best_id = ""
@@ -288,29 +264,44 @@ def classify_sequence(
 
         # Probe multiple window sizes around unit_length to find the
         # best-matching window.  A dupC (1bp insertion) makes the repeat
-        # 61bp; a 14bp deletion makes it 46bp.  We try all sizes from
-        # (unit_length - max_indel) to (unit_length + max_indel) and
-        # pick the one with the lowest edit distance.
+        # 61bp; a 14bp deletion makes it 46bp.
+        #
+        # Try the canonical unit_length first for the common case (exact
+        # match at 60bp).  Only probe other sizes if no exact match.
         best_result: dict | None = None
         best_dist = float("inf")
         best_window_size = unit_length
 
-        for probe_size in range(
-            max(unit_length - max_indel_probe, unit_length // 2),
-            min(unit_length + max_indel_probe + 1, remaining + 1),
-        ):
-            window = sequence[pos : pos + probe_size]
+        # Try canonical size first
+        if remaining >= unit_length:
+            window = sequence[pos : pos + unit_length]
             result = classify_repeat(window, repeat_dict)
-
             dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-            if dist < best_dist:
-                best_dist = dist
-                best_result = result
-                best_window_size = probe_size
+            best_dist = dist
+            best_result = result
+            best_window_size = unit_length
 
-            # Early exit on exact match
-            if dist == 0:
-                break
+        # Probe other sizes only if canonical size wasn't an exact match
+        if best_dist > 0:
+            for probe_size in range(
+                max(unit_length - max_indel_probe, unit_length // 2),
+                min(unit_length + max_indel_probe + 1, remaining + 1),
+            ):
+                if probe_size == unit_length:
+                    continue  # already tried above
+                window = sequence[pos : pos + probe_size]
+                result = classify_repeat(window, repeat_dict)
+
+                dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_result = result
+                    best_window_size = probe_size
+
+                # Early exit: a single edit can't be improved
+                # for biological mutations
+                if best_dist <= 1:
+                    break
 
         assert best_result is not None
         result = best_result
