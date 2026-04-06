@@ -196,7 +196,10 @@ def filter_vcf(
         reference_path: Path to reference FASTA for left-normalisation.
         output_dir: Directory for output files.
         min_qual: Minimum QUAL score to keep a variant (0 = no filter).
-        min_dp: Minimum INFO/DP to keep a variant (0 = no filter).
+        min_dp: Minimum depth to keep a variant (0 = no filter).
+            Note: Clair3 HiFi places depth in FORMAT/DP (per-sample), not
+            INFO/DP.  Using INFO/DP would crash on Clair3 output.  We use
+            QUAL-only filtering since QUAL integrates depth information.
 
     Returns:
         Path to the filtered, indexed VCF (``variants.vcf.gz``).
@@ -221,6 +224,10 @@ def filter_vcf(
         ]
     )
 
+    # Skip quality filtering on empty VCFs (no records = no fields to filter).
+    # Clair3 produces header-only VCFs for wild-type samples with no variants.
+    is_empty = not norm_vcf.exists() or norm_vcf.stat().st_size == 0
+
     # Build view command with PASS filter and optional quality filters
     view_cmd = [
         "bcftools",
@@ -228,13 +235,11 @@ def filter_vcf(
         "-f",
         "PASS",
     ]
-    filters = []
-    if min_qual > 0:
-        filters.append(f"QUAL>={min_qual}")
-    if min_dp > 0:
-        filters.append(f"INFO/DP>={min_dp}")
-    if filters:
-        view_cmd.extend(["-i", " && ".join(filters)])
+    # Only add quality filter if VCF has records.
+    # Use QUAL only — Clair3 HiFi uses FORMAT/DP not INFO/DP, and
+    # QUAL already integrates depth/quality information.
+    if not is_empty and min_qual > 0:
+        view_cmd.extend(["-i", f"QUAL>={min_qual}"])
 
     view_cmd.extend(
         [

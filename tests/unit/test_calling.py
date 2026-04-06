@@ -217,6 +217,73 @@ class TestFilterVcf:
         assert result == out_dir / "variants.vcf.gz"
 
 
+class TestFilterVcfEmptyVcf:
+    """Tests for filter_vcf handling empty VCFs (issue #8)."""
+
+    @patch("open_pacmuci.calling.run_tool")
+    def test_empty_vcf_skips_quality_filter(self, mock_run_tool, tmp_path):
+        """Empty VCF (no records) skips -i filter to avoid INFO/DP crash."""
+        # bcftools norm returns empty output, then bcftools view should NOT
+        # include -i filter since there are no records to filter
+        norm_vcf = tmp_path / "normalized.vcf.gz"
+
+        def side_effect(cmd):
+            # After norm runs, create the normalized file with header only
+            if cmd[:2] == ["bcftools", "norm"]:
+                norm_vcf.write_bytes(b"")  # empty file
+            return ""
+
+        mock_run_tool.side_effect = side_effect
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
+
+        # bcftools view should NOT have -i flag (empty VCF)
+        view_calls = [
+            c[0][0]
+            for c in mock_run_tool.call_args_list
+            if c[0][0][:2] == ["bcftools", "view"]
+        ]
+        assert len(view_calls) == 1
+        assert "-i" not in view_calls[0]
+
+    @patch("open_pacmuci.calling.run_tool")
+    def test_nonempty_vcf_uses_qual_only_filter(self, mock_run_tool, tmp_path):
+        """Non-empty VCF uses QUAL filter only (no INFO/DP which may not exist)."""
+        norm_vcf = tmp_path / "normalized.vcf.gz"
+
+        def side_effect(cmd):
+            if cmd[:2] == ["bcftools", "norm"]:
+                # Write a non-empty file to simulate records
+                norm_vcf.write_bytes(b"\x00" * 100)
+            return ""
+
+        mock_run_tool.side_effect = side_effect
+        vcf = tmp_path / "input.vcf.gz"
+        vcf.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
+
+        view_calls = [
+            c[0][0]
+            for c in mock_run_tool.call_args_list
+            if c[0][0][:2] == ["bcftools", "view"]
+        ]
+        assert len(view_calls) == 1
+        view_cmd = view_calls[0]
+        assert "-i" in view_cmd
+        i_idx = view_cmd.index("-i")
+        expr = view_cmd[i_idx + 1]
+        assert "QUAL" in expr
+        # Should NOT reference INFO/DP (may not exist in Clair3 output)
+        assert "INFO/DP" not in expr
+
+
 class TestCallVariantsPerAllele:
     """Tests for call_variants_per_allele."""
 
@@ -337,9 +404,17 @@ class TestCallVariantsPerAllele:
 class TestFilterVcfQuality:
     """Tests for VCF quality filter parameters."""
 
-    @patch("open_pacmuci.calling.run_tool", return_value="")
+    @patch("open_pacmuci.calling.run_tool")
     def test_filter_vcf_includes_quality_expression(self, mock_run_tool, tmp_path):
-        """filter_vcf passes QUAL and DP filter to bcftools view."""
+        """filter_vcf passes QUAL filter to bcftools view for non-empty VCFs."""
+        norm_vcf = tmp_path / "normalized.vcf.gz"
+
+        def side_effect(cmd):
+            if cmd[:2] == ["bcftools", "norm"]:
+                norm_vcf.write_bytes(b"\x00" * 100)  # non-empty
+            return ""
+
+        mock_run_tool.side_effect = side_effect
         vcf = tmp_path / "input.vcf.gz"
         vcf.touch()
         ref = tmp_path / "ref.fa"
@@ -357,7 +432,6 @@ class TestFilterVcfQuality:
         i_idx = view_cmd.index("-i")
         expr = view_cmd[i_idx + 1]
         assert "QUAL" in expr
-        assert "DP" in expr
 
     @patch("open_pacmuci.calling.run_tool", return_value="")
     def test_filter_vcf_default_params(self, mock_run_tool, tmp_path):
