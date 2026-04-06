@@ -284,7 +284,7 @@ def detect_alleles(
     if len(clusters) < 2:
         return {
             "allele_1": allele_1,
-            "allele_2": {**allele_1, "reads": 0},
+            "allele_2": {**allele_1, "reads": None},
             "homozygous": True,
         }
 
@@ -294,7 +294,7 @@ def detect_alleles(
         allele_1["reads"] += allele_2["reads"]
         return {
             "allele_1": allele_1,
-            "allele_2": {**allele_1, "reads": 0},
+            "allele_2": {**allele_1, "reads": None},
             "homozygous": True,
         }
 

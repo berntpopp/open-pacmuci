@@ -51,9 +51,10 @@ class TestBamToFastq:
 class TestMapReads:
     """Tests for map_reads."""
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
     @patch("open_pacmuci.mapping.run_tool")
-    def test_fastq_input_pipeline(self, mock_run_tool, tmp_path):
-        """For FASTQ input, minimap2 → samtools sort → samtools index are called."""
+    def test_fastq_input_pipeline(self, mock_run_tool, mock_pipeline, tmp_path):
+        """For FASTQ input, mapping pipeline and samtools index are called."""
         mock_run_tool.return_value = ""
         fastq = tmp_path / "reads.fq"
         fastq.touch()
@@ -63,19 +64,16 @@ class TestMapReads:
 
         map_reads(fastq, ref, out_dir, threads=2)
 
-        calls = mock_run_tool.call_args_list
-        # First call: minimap2
-        assert calls[0][0][0][0] == "minimap2"
-        assert "-x" in calls[0][0][0]
-        assert "map-hifi" in calls[0][0][0]
-        # Second call: samtools sort
-        assert calls[1][0][0][:2] == ["samtools", "sort"]
-        # Third call: samtools index
-        assert calls[2][0][0][:2] == ["samtools", "index"]
+        # Pipeline should be called once (minimap2 | samtools sort)
+        assert mock_pipeline.call_count == 1
+        # samtools index should be called via run_tool
+        index_cmd = mock_run_tool.call_args[0][0]
+        assert index_cmd[:2] == ["samtools", "index"]
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
     @patch("open_pacmuci.mapping.run_tool")
-    def test_bam_input_converts_to_fastq_first(self, mock_run_tool, tmp_path):
-        """For BAM input, samtools fastq is called before minimap2."""
+    def test_bam_input_converts_to_fastq_first(self, mock_run_tool, mock_pipeline, tmp_path):
+        """For BAM input, samtools fastq is called before the mapping pipeline."""
         mock_run_tool.return_value = ""
         bam = tmp_path / "reads.bam"
         bam.touch()
@@ -85,11 +83,13 @@ class TestMapReads:
 
         map_reads(bam, ref, out_dir, threads=2)
 
+        # First run_tool call should be samtools fastq (bam_to_fastq)
         first_cmd = mock_run_tool.call_args_list[0][0][0]
         assert first_cmd[:2] == ["samtools", "fastq"]
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
     @patch("open_pacmuci.mapping.run_tool")
-    def test_returns_bam_path(self, mock_run_tool, tmp_path):
+    def test_returns_bam_path(self, mock_run_tool, mock_pipeline, tmp_path):
         """map_reads returns the sorted BAM path."""
         mock_run_tool.return_value = ""
         fastq = tmp_path / "reads.fq"
@@ -101,9 +101,10 @@ class TestMapReads:
 
         assert result == tmp_path / "mapping.bam"
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
     @patch("open_pacmuci.mapping.run_tool")
-    def test_threads_passed_to_minimap2(self, mock_run_tool, tmp_path):
-        """The threads parameter is passed to minimap2 -t flag."""
+    def test_threads_passed_to_pipeline(self, mock_run_tool, mock_pipeline, tmp_path):
+        """The threads parameter is passed to the mapping pipeline."""
         mock_run_tool.return_value = ""
         fastq = tmp_path / "reads.fq"
         fastq.touch()
@@ -112,20 +113,20 @@ class TestMapReads:
 
         map_reads(fastq, ref, tmp_path, threads=8)
 
-        minimap2_cmd = mock_run_tool.call_args_list[0][0][0]
-        t_idx = minimap2_cmd.index("-t")
-        assert minimap2_cmd[t_idx + 1] == "8"
+        # Check threads were passed to _run_mapping_pipeline
+        pipeline_call = mock_pipeline.call_args
+        assert pipeline_call[0][3] == 8  # threads is the 4th positional arg
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
     @patch("open_pacmuci.mapping.run_tool")
-    def test_sam_file_removed_after_sorting(self, mock_run_tool, tmp_path):
-        """Intermediate SAM file is cleaned up after samtools sort."""
+    def test_no_intermediate_sam_file(self, mock_run_tool, mock_pipeline, tmp_path):
+        """No intermediate SAM file is created (pipeline streams directly)."""
         mock_run_tool.return_value = ""
         fastq = tmp_path / "reads.fq"
         fastq.touch()
         ref = tmp_path / "ref.fa"
         ref.touch()
 
-        # SAM file should not exist afterwards (unlink called)
         map_reads(fastq, ref, tmp_path, threads=1)
         assert not (tmp_path / "mapping.sam").exists()
 

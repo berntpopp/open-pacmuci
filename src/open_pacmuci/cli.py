@@ -101,9 +101,10 @@ def alleles(input_path: str, min_coverage: int, output_dir: str) -> None:
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
     from open_pacmuci.mapping import get_idxstats
 
-    idxstats_output = get_idxstats(Path(input_path))
+    bam = Path(input_path)
+    idxstats_output = get_idxstats(bam)
     counts = parse_idxstats(idxstats_output)
-    result = detect_alleles(counts, min_coverage)
+    result = detect_alleles(counts, min_coverage, bam_path=bam)
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -152,7 +153,11 @@ def call(
 
     check_tools(["samtools", "bcftools", "run_clair3.sh"])
 
-    alleles_data = json.loads(Path(alleles_json).read_text())
+    try:
+        alleles_data = json.loads(Path(alleles_json).read_text())
+    except (json.JSONDecodeError, ValueError) as exc:
+        click.echo(f"Error: failed to parse alleles JSON: {exc}", err=True)
+        sys.exit(1)
     vcfs = call_variants_per_allele(
         Path(input_path),
         Path(reference),
@@ -201,13 +206,24 @@ def consensus(
 
     check_tools(["samtools", "bcftools"])
 
-    alleles_data = json.loads(Path(alleles_json).read_text())
+    try:
+        alleles_data = json.loads(Path(alleles_json).read_text())
+    except (json.JSONDecodeError, ValueError) as exc:
+        click.echo(f"Error: failed to parse alleles JSON: {exc}", err=True)
+        sys.exit(1)
     out = Path(output_dir)
     vcf_paths: dict[str, Path] = {}
     for key in ["allele_1", "allele_2"]:
         vcf = out / key / "variants.vcf.gz"
         if vcf.exists():
             vcf_paths[key] = vcf
+
+    if not vcf_paths:
+        click.echo(
+            "Warning: no VCF files found. Expected allele_1/variants.vcf.gz "
+            "or allele_2/variants.vcf.gz in the output directory.",
+            err=True,
+        )
 
     fastas = build_consensus_per_allele(
         Path(reference),
@@ -285,13 +301,7 @@ def classify(
     default=None,
     help="Reference FASTA (defaults to bundled ladder).",
 )
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(exists=True),
-    default=None,
-    help="YAML config file.",
-)
+# TODO: --config support for YAML configuration is planned for a future release
 @click.option("--clair3-model", type=str, default="", help="Path to Clair3 model.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
 @click.option("--min-coverage", type=int, default=10, help="Minimum read coverage.")
@@ -299,7 +309,6 @@ def run(
     input_path: str,
     output_dir: str,
     reference: str | None,
-    config_path: str | None,
     clair3_model: str,
     threads: int,
     min_coverage: int,
@@ -328,7 +337,7 @@ def run(
     click.echo("Step 2/5: Detecting alleles...")
     idxstats = get_idxstats(bam)
     counts = parse_idxstats(idxstats)
-    alleles_result = detect_alleles(counts, min_coverage)
+    alleles_result = detect_alleles(counts, min_coverage, bam_path=bam)
     (out / "alleles.json").write_text(json.dumps(alleles_result, indent=2) + "\n")
     click.echo(f"  Alleles: {alleles_result}")
 
@@ -386,7 +395,10 @@ def _bundled_reference() -> Path:
     Raises:
         SystemExit: If the bundled reference file does not exist.
     """
-    ref = Path(__file__).parent.parent.parent / "data" / "reference" / "reference_ladder.fa"
+    import importlib.resources
+
+    res = importlib.resources.files("open_pacmuci.data.reference").joinpath("reference_ladder.fa")
+    ref = Path(str(res))
     if not ref.exists():
         click.echo(
             f"Bundled reference not found at {ref}. Run 'open-pacmuci ladder' to generate it.",

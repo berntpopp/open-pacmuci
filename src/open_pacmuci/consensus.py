@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
+
+logger = logging.getLogger(__name__)
 
 
 def build_consensus(
@@ -69,6 +72,17 @@ def trim_flanking(
     lines = consensus_fasta.read_text().strip().splitlines()
     header = lines[0] if lines and lines[0].startswith(">") else ">consensus"
     sequence = "".join(line for line in lines if not line.startswith(">"))
+
+    # Validate: if sequence is too short to trim, return it untrimmed
+    if len(sequence) < 2 * flank_length:
+        logger.warning(
+            "Sequence length %d is shorter than 2 * flank_length (%d); "
+            "returning full sequence untrimmed.",
+            len(sequence),
+            2 * flank_length,
+        )
+        output_path.write_text(f"{header}_vntr\n{sequence}\n")
+        return output_path
 
     # Strip flanking from both ends
     vntr = sequence[flank_length:]

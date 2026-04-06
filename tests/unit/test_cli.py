@@ -147,11 +147,16 @@ class TestAllelesSubcommand:
 
     def test_alleles_writes_json(self, tmp_path):
         """alleles subcommand writes alleles.json to the output directory."""
-        # Provide idxstats output with two clear peaks -- mock at the source module
-        with patch("open_pacmuci.mapping.run_tool") as mock_run_tool:
-            mock_run_tool.return_value = (
+        # Mock both mapping.run_tool (for idxstats) and alleles.run_tool
+        # (for refine_peak_contig's samtools view call)
+        with (
+            patch("open_pacmuci.mapping.run_tool") as mock_mapping_run,
+            patch("open_pacmuci.alleles.run_tool") as mock_alleles_run,
+        ):
+            mock_mapping_run.return_value = (
                 "contig_60\t4120\t200\t0\ncontig_80\t5320\t150\t0\n*\t0\t0\t50\n"
             )
+            mock_alleles_run.return_value = ""
             runner = CliRunner()
             bam = tmp_path / "mapping.bam"
             bam.touch()
@@ -179,8 +184,12 @@ class TestAllelesSubcommand:
 
     def test_alleles_echoes_result(self, tmp_path):
         """alleles subcommand prints the detected alleles."""
-        with patch("open_pacmuci.mapping.run_tool") as mock_run_tool:
-            mock_run_tool.return_value = "contig_60\t4120\t200\t0\n*\t0\t0\t50\n"
+        with (
+            patch("open_pacmuci.mapping.run_tool") as mock_mapping_run,
+            patch("open_pacmuci.alleles.run_tool") as mock_alleles_run,
+        ):
+            mock_mapping_run.return_value = "contig_60\t4120\t200\t0\n*\t0\t0\t50\n"
+            mock_alleles_run.return_value = ""
             runner = CliRunner()
             bam = tmp_path / "mapping.bam"
             bam.touch()
@@ -244,7 +253,8 @@ class TestMapSubcommand:
         """map subcommand calls map_reads and echoes the output path."""
         with (
             patch("open_pacmuci.tools.check_tools", return_value=True),
-            patch("open_pacmuci.mapping.run_tool", return_value="") as mock_run,
+            patch("open_pacmuci.mapping._run_mapping_pipeline"),
+            patch("open_pacmuci.mapping.run_tool", return_value=""),
         ):
             fastq = tmp_path / "reads.fq"
             fastq.touch()
@@ -269,14 +279,12 @@ class TestMapSubcommand:
 
         assert result.exit_code == 0, result.output
         assert "Mapping written to" in result.output
-        # minimap2 should have been one of the calls
-        tool_calls = [c[0][0][0] for c in mock_run.call_args_list]
-        assert "minimap2" in tool_calls
 
     def test_map_echoes_bam_path(self, tmp_path):
         """map subcommand echoes the BAM path on success."""
         with (
             patch("open_pacmuci.tools.check_tools", return_value=True),
+            patch("open_pacmuci.mapping._run_mapping_pipeline"),
             patch("open_pacmuci.mapping.run_tool", return_value=""),
         ):
             fastq = tmp_path / "reads.fq"

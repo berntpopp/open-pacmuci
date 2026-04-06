@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
@@ -55,44 +56,96 @@ def map_reads(
     if input_path.suffix.lower() == ".bam":
         actual_input = bam_to_fastq(input_path, output_dir)
 
-    sam_path = output_dir / "mapping.sam"
     bam_path = output_dir / "mapping.bam"
 
-    # minimap2 alignment -- stdout is SAM
-    sam_output = run_tool(
-        [
-            "minimap2",
-            "-a",
-            "-x",
-            "map-hifi",
-            "-t",
-            str(threads),
-            str(reference_path),
-            str(actual_input),
-        ]
-    )
-    sam_path.write_text(sam_output)
-
-    # samtools sort → BAM
-    run_tool(
-        [
-            "samtools",
-            "sort",
-            "-@",
-            str(threads),
-            "-o",
-            str(bam_path),
-            str(sam_path),
-        ]
-    )
+    # Pipe minimap2 SAM output directly to samtools sort to avoid
+    # holding the full SAM in memory.  All arguments are controlled
+    # internally (no user input), so a shell pipe is safe here.
+    _run_mapping_pipeline(actual_input, reference_path, bam_path, threads)
 
     # samtools index
     run_tool(["samtools", "index", str(bam_path)])
 
-    # Remove intermediate SAM
-    sam_path.unlink(missing_ok=True)
-
     return bam_path
+
+
+def _run_mapping_pipeline(
+    input_path: Path,
+    reference_path: Path,
+    bam_path: Path,
+    threads: int,
+) -> None:
+    """Run minimap2 | samtools sort as a streaming pipeline.
+
+    Pipes minimap2 SAM output directly into samtools sort, avoiding
+    the need to hold the full SAM in memory.
+
+    Args:
+        input_path: Path to input FASTQ file.
+        reference_path: Path to reference FASTA.
+        bam_path: Path for sorted output BAM.
+        threads: Number of threads for minimap2/samtools.
+
+    Raises:
+        FileNotFoundError: If minimap2 or samtools is not found.
+        RuntimeError: If either process exits with non-zero status.
+    """
+    minimap2_cmd = [
+        "minimap2",
+        "-a",
+        "-x",
+        "map-hifi",
+        "-t",
+        str(threads),
+        str(reference_path),
+        str(input_path),
+    ]
+    samtools_cmd = [
+        "samtools",
+        "sort",
+        "-@",
+        str(threads),
+        "-o",
+        str(bam_path),
+    ]
+
+    try:
+        p1 = subprocess.Popen(
+            minimap2_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise FileNotFoundError("Tool not found: minimap2") from exc
+
+    try:
+        p2 = subprocess.Popen(
+            samtools_cmd,
+            stdin=p1.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        p1.kill()
+        p1.wait()
+        raise FileNotFoundError("Tool not found: samtools") from exc
+
+    # Allow p1 to receive SIGPIPE if p2 exits early
+    assert p1.stdout is not None
+    p1.stdout.close()
+
+    _, p2_stderr = p2.communicate()
+    p1.wait()
+
+    if p1.returncode != 0:
+        raise RuntimeError(
+            f"minimap2 failed with exit code {p1.returncode}.\n"
+            f"stderr: {p1.stderr.read().decode() if p1.stderr else ''}"
+        )
+    if p2.returncode != 0:
+        raise RuntimeError(
+            f"samtools sort failed with exit code {p2.returncode}.\nstderr: {p2_stderr.decode()}"
+        )
 
 
 def get_idxstats(bam_path: Path) -> str:
