@@ -19,7 +19,6 @@ env/
 *.swo
 
 # Data (large files)
-data/reference/*.fa
 data/reference/*.fai
 data/reference/*.bwt
 data/reference/*.pac
