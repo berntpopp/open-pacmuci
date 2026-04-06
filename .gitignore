@@ -34,3 +34,17 @@ results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# uv
+uv.lock
+
+# Pre-commit
+.pre-commit-config.yaml.bak
+
+# Test data (generated)
+tests/data/generated/
