@@ -151,8 +151,7 @@ class TestMutationCatalog:
         assert len(rd.mutated_sequences) > 0
         # dupC on X should produce a 61bp sequence
         found_dupc = any(
-            name == "dupC" and repeat == "X"
-            for seq, (repeat, name) in rd.mutated_sequences.items()
+            name == "dupC" and repeat == "X" for seq, (repeat, name) in rd.mutated_sequences.items()
         )
         assert found_dupc
 

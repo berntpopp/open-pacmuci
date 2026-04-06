@@ -223,9 +223,7 @@ def classify_repeat(
     return result
 
 
-def _probe_sizes_generator(
-    unit_length: int, max_indel_probe: int, remaining: int
-) -> list[int]:
+def _probe_sizes_generator(unit_length: int, max_indel_probe: int, remaining: int) -> list[int]:
     """Generate probe sizes: canonical first, then small-to-large."""
     sizes = [min(unit_length, remaining)]
     for ps in range(
@@ -410,13 +408,12 @@ def classify_sequence(
                 exact_found = True
                 break
             # Check standard repeats
-            if window in seq_to_id:
-                if canonical_result is None:
-                    canonical_result = {
-                        "type": seq_to_id[window],
-                        "match": "exact",
-                        "confidence": 1.0,
-                    }
+            if window in seq_to_id and canonical_result is None:
+                canonical_result = {
+                    "type": seq_to_id[window],
+                    "match": "exact",
+                    "confidence": 1.0,
+                }
 
         # Use canonical match if no mutation template found
         if not exact_found and canonical_result is not None:
@@ -431,9 +428,7 @@ def classify_sequence(
             if remaining >= unit_length:
                 window = sequence[pos : pos + unit_length]
                 result = classify_repeat(window, repeat_dict)
-                dist = (
-                    0 if result["match"] == "exact" else result.get("edit_distance", 999)
-                )
+                dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
                 best_dist = dist
                 best_result = result
                 best_window_size = unit_length
@@ -447,11 +442,7 @@ def classify_sequence(
                         continue
                     window = sequence[pos : pos + probe_size]
                     result = classify_repeat(window, repeat_dict)
-                    dist = (
-                        0
-                        if result["match"] == "exact"
-                        else result.get("edit_distance", 999)
-                    )
+                    dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
                     if dist < best_dist:
                         best_dist = dist
                         best_result = result
@@ -504,10 +495,7 @@ def classify_sequence(
                 gap_result = classify_repeat(gap_seq, repeat_dict)
                 repeat_index += 1
                 gap_result["index"] = repeat_index
-                if (
-                    gap_result.get("classification") == "mutation"
-                    or gap_result["match"] != "exact"
-                ):
+                if gap_result.get("classification") == "mutation" or gap_result["match"] != "exact":
                     labels.append(f"{gap_result.get('closest_match', '?')}m")
                     mutations.append(
                         {

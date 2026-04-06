@@ -126,12 +126,8 @@ def trim_flanking(
 
         # Right anchor: last 20bp of after-repeat "9" + first 20bp of right flank
         if "9" in repeat_dict.repeats:
-            right_anchor = (
-                repeat_dict.repeats["9"][-20:] + repeat_dict.flanking_right[:20]
-            )
-            right_anchor_pos = _find_anchor(
-                sequence, right_anchor, len(sequence) - flank_length
-            )
+            right_anchor = repeat_dict.repeats["9"][-20:] + repeat_dict.flanking_right[:20]
+            right_anchor_pos = _find_anchor(sequence, right_anchor, len(sequence) - flank_length)
             if right_anchor_pos is not None:
                 right_trim = right_anchor_pos - 20  # end after repeat "9"
 

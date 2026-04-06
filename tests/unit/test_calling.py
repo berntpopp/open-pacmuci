@@ -347,9 +347,7 @@ class TestFilterVcfQuality:
 
         # Find the bcftools view call
         view_calls = [
-            c[0][0]
-            for c in mock_run_tool.call_args_list
-            if c[0][0][:2] == ["bcftools", "view"]
+            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
         ]
         assert len(view_calls) == 1
         view_cmd = view_calls[0]

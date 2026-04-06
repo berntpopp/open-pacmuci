@@ -371,9 +371,7 @@ def run(
         # VCF-backed validation if VCF available
         if allele_key in vcf_paths:
             vcf_variants = _parse_vcf_for_validation(vcf_paths[allele_key])
-            result = validate_mutations_against_vcf(
-                result, vcf_variants=vcf_variants
-            )
+            result = validate_mutations_against_vcf(result, vcf_variants=vcf_variants)
 
         all_results[allele_key] = result
         click.echo(f"  {allele_key}: {result['structure']}")

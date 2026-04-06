@@ -323,6 +323,7 @@ class TestBuildAlleleInfo:
         info = _build_allele_info(cluster)
         assert info["cluster_contigs"] == ["contig_50", "contig_51", "contig_52"]
 
+
 class TestSameLengthDetection:
     """Tests for same_length allele detection."""
 

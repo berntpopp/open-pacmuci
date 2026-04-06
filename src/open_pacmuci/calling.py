@@ -236,13 +236,15 @@ def filter_vcf(
     if filters:
         view_cmd.extend(["-i", " && ".join(filters)])
 
-    view_cmd.extend([
-        "-o",
-        str(filtered),
-        "-O",
-        "z",
-        str(norm_vcf),
-    ])
+    view_cmd.extend(
+        [
+            "-o",
+            str(filtered),
+            "-O",
+            "z",
+            str(norm_vcf),
+        ]
+    )
     run_tool(view_cmd)
     run_tool(["bcftools", "index", str(filtered)])
 
@@ -333,17 +335,14 @@ def disambiguate_same_length_alleles(
         model_path=clair3_model,
         threads=threads,
     )
-    filtered_vcf = filter_vcf(
-        raw_vcf, contig_ref, merged_dir, min_qual=min_qual, min_dp=min_dp
-    )
+    filtered_vcf = filter_vcf(raw_vcf, contig_ref, merged_dir, min_qual=min_qual, min_dp=min_dp)
 
     # Check genotypes
     variants = parse_vcf_genotypes(filtered_vcf)
     het_variants = [
         v
         for v in variants
-        if "/" in v["genotype"]
-        and v["genotype"] not in ("0/0", "1/1", "./.", ".|.")
+        if "/" in v["genotype"] and v["genotype"] not in ("0/0", "1/1", "./.", ".|.")
     ]
 
     results: dict[str, Path] = {}
@@ -484,9 +483,7 @@ def call_variants_per_allele(
         )
 
         # Filter VCF
-        filtered = filter_vcf(
-            vcf, contig_ref, allele_dir, min_qual=min_qual, min_dp=min_dp
-        )
+        filtered = filter_vcf(vcf, contig_ref, allele_dir, min_qual=min_qual, min_dp=min_dp)
         results[allele_key] = filtered
 
     return results

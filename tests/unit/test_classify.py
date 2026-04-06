@@ -303,9 +303,7 @@ class TestBidirectionalClassification:
         assert labels[0] == "1"
         assert labels[-1] == "9"
         # The novel mutation should be detected
-        assert len(result["mutations_detected"]) >= 1 or any(
-            "m" in label for label in labels
-        )
+        assert len(result["mutations_detected"]) >= 1 or any("m" in label for label in labels)
 
     def test_forward_only_when_no_large_mutation(self, repeat_dict):
         """No bidirectional needed when all repeats classify well."""
