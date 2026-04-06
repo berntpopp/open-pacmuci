@@ -58,5 +58,208 @@
     "8",
     "9"
   ],
-  "canonical_repeat": "X"
+  "canonical_repeat": "X",
+  "mutations": {
+    "dupC": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 60,
+          "sequence": "C"
+        }
+      ],
+      "citation": "Kirby et al. 2013, PMID:23396133"
+    },
+    "dupA": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 60,
+          "sequence": "A"
+        }
+      ],
+      "citation": "Olinger et al. 2020, PMID:32647000"
+    },
+    "insG": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 59,
+          "sequence": "G"
+        }
+      ],
+      "citation": "Olinger et al. 2020, PMID:32647000"
+    },
+    "insCCCC": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 60,
+          "sequence": "CCCC"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "insC_pos23": {
+      "allowed_repeats": [
+        "A",
+        "E"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 23,
+          "sequence": "C"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "insG_pos58": {
+      "allowed_repeats": [
+        "B",
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 58,
+          "sequence": "G"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "insG_pos54": {
+      "allowed_repeats": [
+        "B",
+        "J"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 54,
+          "sequence": "G"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "insA_pos54": {
+      "allowed_repeats": [
+        "A",
+        "H"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 54,
+          "sequence": "A"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "del18_31": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "delete",
+          "start": 18,
+          "end": 31
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "ins16bp": {
+      "allowed_repeats": [
+        "C"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 57,
+          "sequence": "GGGCTCCACCGCCCCC"
+        }
+      ],
+      "citation": "Vrbacka et al. 2025"
+    },
+    "ins25bp": {
+      "allowed_repeats": [
+        "A",
+        "B",
+        "J",
+        "K",
+        "N",
+        "S",
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "insert",
+          "start": 31,
+          "sequence": "CAGGCCGGCCCCGGGCTCCGGACAC"
+        }
+      ],
+      "citation": "Saei et al. 2023, PMID:37456840"
+    },
+    "delinsAT": {
+      "allowed_repeats": [
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "delete_insert",
+          "start": 54,
+          "end": 56,
+          "sequence": "AT"
+        }
+      ],
+      "citation": "Olinger et al. 2020, PMID:32647000"
+    },
+    "delGCCCA": {
+      "allowed_repeats": [
+        "5",
+        "5C",
+        "6",
+        "6p",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "V",
+        "W",
+        "X"
+      ],
+      "changes": [
+        {
+          "type": "delete",
+          "start": 1,
+          "end": 5
+        }
+      ],
+      "citation": "Saei et al. 2023, PMID:37456840"
+    }
+  }
 }
