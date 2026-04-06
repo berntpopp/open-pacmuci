@@ -3,12 +3,21 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-# Default path: from src/open_pacmuci/config.py, go up three levels to project root
-_BUNDLED_REPEATS = Path(__file__).parent.parent.parent / "data" / "repeats" / "repeats.json"
+
+def _bundled_repeats_path() -> Path:
+    """Resolve bundled repeat dictionary using importlib.resources.
+
+    Works both in editable installs and when installed as a package
+    (e.g., from Docker or pip install).
+    """
+    ref = importlib.resources.files("open_pacmuci.data.repeats").joinpath("repeats.json")
+    # as_posix() returns a Traversable; for Path compatibility use the context
+    return Path(str(ref))
 
 
 @dataclass
@@ -52,7 +61,7 @@ def load_repeat_dictionary(path: Path | None = None) -> RepeatDictionary:
         FileNotFoundError: If the JSON file does not exist.
         KeyError: If required keys are missing from the JSON.
     """
-    resolved = path if path is not None else _BUNDLED_REPEATS
+    resolved = path if path is not None else _bundled_repeats_path()
     if not resolved.exists():
         raise FileNotFoundError(f"Repeat dictionary not found: {resolved}")
 
