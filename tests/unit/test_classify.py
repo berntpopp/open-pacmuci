@@ -10,6 +10,7 @@ from open_pacmuci.classify import (
     classify_repeat,
     classify_sequence,
     edit_distance,
+    validate_mutations_against_vcf,
 )
 from open_pacmuci.config import load_repeat_dictionary
 
@@ -239,3 +240,47 @@ class TestMutationTemplateMatching:
         result = classify_sequence(full, repeat_dict)
         assert len(result["repeats"]) == 3
         assert result["repeats"][1]["type"] == "C:ins16bp"
+
+
+class TestVcfMutationValidation:
+    """Tests for VCF-backed mutation validation."""
+
+    def test_confirmed_mutation_keeps_high_confidence(self, repeat_dict):
+        """Mutation with VCF support keeps confidence unchanged."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel 2bp insertion (not in template catalog) -> lands in mutations_detected
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+
+        # Simulate VCF with a variant at repeat 2 position
+        vcf_variants = [{"pos": 560, "qual": 25.0}]  # flank(500) + 60bp
+
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=vcf_variants, flank_length=500, unit_length=60
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut.get("vcf_support") is True
+
+    def test_unsupported_mutation_gets_low_confidence(self, repeat_dict):
+        """Mutation without VCF support gets reduced confidence."""
+        x_seq = repeat_dict.repeats["X"]
+        # Novel 2bp insertion (not in template catalog)
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # 62bp
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+
+        # No VCF variants at all
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=[], flank_length=500, unit_length=60
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut.get("vcf_support") is False
+
+    def test_no_mutations_unchanged(self, repeat_dict):
+        """Sequence with no mutations passes through unchanged."""
+        x_seq = repeat_dict.repeats["X"]
+        result = classify_sequence(x_seq * 3, repeat_dict)
+
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=[], flank_length=500, unit_length=60
+        )
+        assert validated["mutations_detected"] == []

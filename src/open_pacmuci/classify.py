@@ -416,3 +416,62 @@ def classify_sequence(
         "allele_confidence": round(allele_confidence, 4),
         "exact_match_pct": round(exact_match_pct, 1),
     }
+
+
+def validate_mutations_against_vcf(
+    classification_result: dict,
+    vcf_variants: list[dict] | None = None,
+    flank_length: int = 500,
+    unit_length: int = 60,
+) -> dict:
+    """Cross-validate detected mutations against VCF variant positions.
+
+    For each mutation, check if a VCF variant overlaps the repeat's
+    genomic position.  Adds ``vcf_support`` flag and adjusts confidence.
+
+    Args:
+        classification_result: Output from :func:`classify_sequence`.
+        vcf_variants: List of dicts with ``pos`` (int) and ``qual`` (float).
+            If None, VCF validation is skipped (standalone classify mode).
+        flank_length: Flanking bp on each side of the contig.
+        unit_length: Expected repeat unit length (60bp).
+
+    Returns:
+        Updated classification result with VCF validation annotations.
+    """
+    result = classification_result.copy()
+    result["mutations_detected"] = [m.copy() for m in result.get("mutations_detected", [])]
+    result["repeats"] = [r.copy() for r in result.get("repeats", [])]
+
+    if vcf_variants is None:
+        return result
+
+    for mutation in result["mutations_detected"]:
+        repeat_idx = mutation["repeat_index"]
+        # Map repeat index to contig coordinates
+        repeat_start = flank_length + (repeat_idx - 1) * unit_length
+        repeat_end = repeat_start + unit_length + 30  # allow for indels
+
+        # Check if any VCF variant overlaps this repeat
+        supporting = [v for v in vcf_variants if repeat_start <= v["pos"] <= repeat_end]
+        mutation["vcf_support"] = len(supporting) > 0
+        mutation["vcf_qual"] = max((v["qual"] for v in supporting), default=0.0)
+
+        # Adjust confidence in the corresponding repeat
+        if repeat_idx - 1 < len(result["repeats"]):
+            repeat_result = result["repeats"][repeat_idx - 1]
+            base_confidence = repeat_result.get("confidence", 1.0)
+            if supporting:
+                best_qual = mutation["vcf_qual"]
+                vcf_score = 1.0 if best_qual >= 20 else 0.7
+            else:
+                vcf_score = 0.3
+            repeat_result["confidence"] = round(base_confidence * vcf_score, 4)
+
+    # Recompute allele_confidence
+    confidences = [r.get("confidence", 1.0) for r in result["repeats"]]
+    result["allele_confidence"] = (
+        round(sum(confidences) / len(confidences), 4) if confidences else 0.0
+    )
+
+    return result
