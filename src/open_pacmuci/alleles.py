@@ -1,8 +1,30 @@
-"""Allele length detection from samtools idxstats output."""
+"""Allele length detection from samtools idxstats output.
+
+Peak contig selection uses two alignment quality metrics extracted from the
+BAM file:
+
+- **Alignment score (AS):** Higher AS means the read aligns better to the
+  contig.  Reads from a 60-repeat allele produce the highest AS when
+  aligned to the contig whose length matches the allele (contig_51 for
+  51 canonical X repeats + 9 fixed = 60 total).
+
+- **Indel length:** Lower mean indel length indicates a better length
+  match between read and reference.  Reads aligned to a contig that is
+  too short or too long accumulate large insertions or deletions in the
+  CIGAR string.
+
+Both metrics independently identify the correct contig in testing.  We
+use AS as the primary selector because it integrates all alignment
+factors (matches, mismatches, gaps) into a single score.  Mean indel
+length is reported alongside for transparency.
+"""
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+from open_pacmuci.tools import run_tool
 
 # Number of fixed repeat units in the ladder reference (pre-repeats 1-5 + after-repeats 6-9).
 # Each contig_N has N canonical X repeats plus these fixed repeats,
@@ -44,6 +66,86 @@ def parse_idxstats(idxstats_output: str) -> dict[int, int]:
     return counts
 
 
+def _parse_cigar_indel_bp(cigar: str) -> int:
+    """Sum of insertion and deletion bases from a CIGAR string."""
+    total = 0
+    for m in re.finditer(r"(\d+)([ID])", cigar):
+        total += int(m.group(1))
+    return total
+
+
+def refine_peak_contig(
+    bam_path: Path,
+    cluster_contigs: list[str],
+) -> dict:
+    """Select the best contig from a cluster using alignment quality metrics.
+
+    Scans all reads mapped to the cluster contigs and computes per-contig
+    mean alignment score (AS tag) and mean indel length (from CIGAR).
+    The contig with the **highest mean AS** is selected as the best match.
+
+    Args:
+        bam_path: Path to the ladder mapping BAM (indexed).
+        cluster_contigs: List of contig names in the cluster
+            (e.g. ``["contig_48", ..., "contig_54"]``).
+
+    Returns:
+        Dictionary with:
+
+        - ``best_contig`` (str): name of the best-matching contig
+        - ``metrics`` (dict): per-contig ``{mean_as, mean_indel_bp, reads}``
+    """
+    sam_output = run_tool(["samtools", "view", str(bam_path), *cluster_contigs])
+
+    # Accumulate per-contig stats
+    contig_stats: dict[str, dict] = {
+        c: {"as_sum": 0, "indel_sum": 0, "count": 0} for c in cluster_contigs
+    }
+
+    for line in sam_output.strip().splitlines():
+        if not line or line.startswith("@"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 11:
+            continue
+
+        contig = fields[2]
+        if contig not in contig_stats:
+            continue
+
+        cigar = fields[5]
+        contig_stats[contig]["indel_sum"] += _parse_cigar_indel_bp(cigar)
+        contig_stats[contig]["count"] += 1
+
+        # Parse AS tag
+        for tag in fields[11:]:
+            if tag.startswith("AS:i:"):
+                contig_stats[contig]["as_sum"] += int(tag[5:])
+                break
+
+    # Compute means and pick best
+    metrics: dict[str, dict] = {}
+    best_contig = cluster_contigs[0]
+    best_as = -1.0
+
+    for contig, stats in contig_stats.items():
+        n = stats["count"]
+        if n == 0:
+            continue
+        mean_as = stats["as_sum"] / n
+        mean_indel = stats["indel_sum"] / n
+        metrics[contig] = {
+            "mean_as": round(mean_as, 1),
+            "mean_indel_bp": round(mean_indel, 1),
+            "reads": n,
+        }
+        if mean_as > best_as:
+            best_as = mean_as
+            best_contig = contig
+
+    return {"best_contig": best_contig, "metrics": metrics}
+
+
 def _find_clusters(
     counts: dict[int, int],
     min_coverage: int,
@@ -62,7 +164,6 @@ def _find_clusters(
     Returns:
         List of cluster dicts sorted by total_reads descending.
         Each dict has keys: center (int), total_reads (int),
-        peak_contig (int, contig with most reads),
         contigs (list of (repeat_count, reads) tuples).
     """
     passing = sorted(
@@ -85,17 +186,15 @@ def _find_clusters(
             current_cluster.append(passing[i])
     clusters.append(current_cluster)
 
-    # Compute weighted center, peak contig, and total reads for each cluster
+    # Compute weighted center and total reads for each cluster
     result: list[dict] = []
     for cluster in clusters:
         total_reads = sum(reads for _, reads in cluster)
         weighted_center = sum(pos * reads for pos, reads in cluster) / total_reads
-        peak_contig = max(cluster, key=lambda x: x[1])[0]
         result.append(
             {
                 "center": round(weighted_center),
                 "total_reads": total_reads,
-                "peak_contig": peak_contig,
                 "contigs": cluster,
             }
         )
@@ -104,15 +203,22 @@ def _find_clusters(
     return result
 
 
-def _build_allele_info(cluster: dict) -> dict:
-    """Build allele info dict from a cluster."""
+def _build_allele_info(cluster: dict, best_contig: str | None = None) -> dict:
+    """Build allele info dict from a cluster.
+
+    Args:
+        cluster: Cluster dict from _find_clusters.
+        best_contig: Contig name selected by refine_peak_contig.
+            If None, falls back to the weighted center.
+    """
     canonical = cluster["center"]
-    peak = cluster["peak_contig"]
+    contig_name = best_contig if best_contig is not None else f"contig_{canonical}"
+
     return {
         "length": canonical + PRE_AFTER_REPEAT_COUNT,
         "reads": cluster["total_reads"],
         "canonical_repeats": canonical,
-        "contig_name": f"contig_{peak}",
+        "contig_name": contig_name,
         "cluster_contigs": [f"contig_{c}" for c, _ in cluster["contigs"]],
     }
 
@@ -120,6 +226,7 @@ def _build_allele_info(cluster: dict) -> dict:
 def detect_alleles(
     counts: dict[int, int],
     min_coverage: int = 10,
+    bam_path: Path | None = None,
 ) -> dict:
     """Detect allele lengths from read count distribution across ladder contigs.
 
@@ -127,10 +234,16 @@ def detect_alleles(
     one allele. Reports the total allele length (canonical repeats + 9 fixed
     pre/after repeats) and the contig names needed for downstream processing.
 
+    If *bam_path* is provided, the best contig within each cluster is refined
+    using alignment scores (AS) and indel lengths from the BAM.  Without a
+    BAM, the weighted center of the cluster is used as a fallback.
+
     Args:
         counts: Canonical repeat count -> mapped reads mapping from
             :func:`parse_idxstats`.
         min_coverage: Minimum mapped reads to include a contig.
+        bam_path: Optional path to the indexed ladder mapping BAM.
+            When provided, enables alignment-quality-based peak refinement.
 
     Returns:
         Dictionary with keys ``allele_1``, ``allele_2``, and ``homozygous``.
@@ -139,7 +252,7 @@ def detect_alleles(
         - ``length`` (int): total repeat units including pre/after
         - ``reads`` (int): total mapped reads across the cluster
         - ``canonical_repeats`` (int): number of canonical X repeats
-        - ``contig_name`` (str): name of the peak contig (e.g. ``"contig_51"``)
+        - ``contig_name`` (str): best-matching contig (e.g. ``"contig_51"``)
         - ``cluster_contigs`` (list[str]): all contig names in the cluster
 
     Raises:
@@ -157,7 +270,16 @@ def detect_alleles(
             f"Max observed: {max_observed} reads."
         )
 
-    allele_1 = _build_allele_info(clusters[0])
+    # Refine peak contig selection using alignment quality if BAM available
+    def _get_best_contig(cluster: dict) -> str | None:
+        if bam_path is None:
+            return None
+        contig_names = [f"contig_{c}" for c, _ in cluster["contigs"]]
+        refined = refine_peak_contig(bam_path, contig_names)
+        best: str = refined["best_contig"]
+        return best
+
+    allele_1 = _build_allele_info(clusters[0], _get_best_contig(clusters[0]))
 
     if len(clusters) < 2:
         return {
@@ -166,7 +288,7 @@ def detect_alleles(
             "homozygous": True,
         }
 
-    allele_2 = _build_allele_info(clusters[1])
+    allele_2 = _build_allele_info(clusters[1], _get_best_contig(clusters[1]))
 
     if allele_1["length"] == allele_2["length"]:
         allele_1["reads"] += allele_2["reads"]
