@@ -164,6 +164,17 @@ def classify_repeat(
     if sequence in seq_to_id:
         return {"type": seq_to_id[sequence], "match": "exact", "confidence": 1.0}
 
+    # Check mutation templates (variable-length exact matches)
+    if hasattr(repeat_dict, "mutated_sequences") and sequence in repeat_dict.mutated_sequences:
+        parent_repeat, mut_name = repeat_dict.mutated_sequences[sequence]
+        return {
+            "type": f"{parent_repeat}:{mut_name}",
+            "match": "exact",
+            "confidence": 1.0,
+            "mutation_name": mut_name,
+            "parent_repeat": parent_repeat,
+        }
+
     # No exact match -- find closest by edit distance
     best_id = ""
     best_dist = float("inf")
@@ -212,6 +223,20 @@ def classify_repeat(
     return result
 
 
+def _probe_sizes_generator(
+    unit_length: int, max_indel_probe: int, remaining: int
+) -> list[int]:
+    """Generate probe sizes: canonical first, then small-to-large."""
+    sizes = [min(unit_length, remaining)]
+    for ps in range(
+        max(unit_length - max_indel_probe, unit_length // 2),
+        min(unit_length + max_indel_probe + 1, remaining + 1),
+    ):
+        if ps != unit_length:
+            sizes.append(ps)
+    return sizes
+
+
 def classify_sequence(
     sequence: str,
     repeat_dict: RepeatDictionary,
@@ -252,6 +277,9 @@ def classify_sequence(
     mutations: list[dict] = []
     labels: list[str] = []
 
+    # Build reverse maps once for O(1) exact-match lookups
+    seq_to_id = {seq: rid for rid, seq in repeat_dict.repeats.items()}
+
     pos = 0
     repeat_index = 0
     cumulative_offset = 0
@@ -263,46 +291,86 @@ def classify_sequence(
         if remaining < unit_length // 2:
             break
 
-        # Probe multiple window sizes around unit_length to find the
-        # best-matching window.  A dupC (1bp insertion) makes the repeat
-        # 61bp; a 14bp deletion makes it 46bp.
-        #
-        # Try the canonical unit_length first for the common case (exact
-        # match at 60bp).  Only probe other sizes if no exact match.
         best_result: dict | None = None
         best_dist = float("inf")
         best_window_size = unit_length
 
-        # Try canonical size first
-        if remaining >= unit_length:
-            window = sequence[pos : pos + unit_length]
-            result = classify_repeat(window, repeat_dict)
-            dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-            best_dist = dist
-            best_result = result
-            best_window_size = unit_length
+        # --- Phase 1: Check ALL probe sizes for exact match ---
+        # First check canonical size for standard repeats (common case).
+        # Then check ALL sizes for mutation templates (which are non-60bp).
+        # Mutation templates take priority over canonical-size standard matches
+        # because they explain the actual biological repeat length.
+        exact_found = False
+        canonical_result: dict | None = None
 
-        # Probe other sizes only if canonical size wasn't an exact match
-        if best_dist > 0:
-            for probe_size in range(
-                max(unit_length - max_indel_probe, unit_length // 2),
-                min(unit_length + max_indel_probe + 1, remaining + 1),
+        for probe_size in _probe_sizes_generator(unit_length, max_indel_probe, remaining):
+            window = sequence[pos : pos + probe_size]
+            # Check mutation templates first (variable-length exact matches)
+            if (
+                hasattr(repeat_dict, "mutated_sequences")
+                and window in repeat_dict.mutated_sequences
             ):
-                if probe_size == unit_length:
-                    continue  # already tried above
-                window = sequence[pos : pos + probe_size]
+                parent, mname = repeat_dict.mutated_sequences[window]
+                best_result = {
+                    "type": f"{parent}:{mname}",
+                    "match": "exact",
+                    "confidence": 1.0,
+                    "mutation_name": mname,
+                    "parent_repeat": parent,
+                }
+                best_window_size = probe_size
+                best_dist = 0
+                exact_found = True
+                break
+            # Check standard repeats
+            if window in seq_to_id:
+                if canonical_result is None:
+                    canonical_result = {
+                        "type": seq_to_id[window],
+                        "match": "exact",
+                        "confidence": 1.0,
+                    }
+
+        # Use canonical match if no mutation template found
+        if not exact_found and canonical_result is not None:
+            best_result = canonical_result
+            best_window_size = unit_length
+            best_dist = 0
+            exact_found = True
+
+        # --- Phase 2: Edit distance fallback (only if no exact match) ---
+        if not exact_found:
+            # Try canonical size first
+            if remaining >= unit_length:
+                window = sequence[pos : pos + unit_length]
                 result = classify_repeat(window, repeat_dict)
+                dist = (
+                    0 if result["match"] == "exact" else result.get("edit_distance", 999)
+                )
+                best_dist = dist
+                best_result = result
+                best_window_size = unit_length
 
-                dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_result = result
-                    best_window_size = probe_size
-
-                # Early exit: a single edit can't be improved
-                # for biological mutations
-                if best_dist <= 1:
-                    break
+            if best_dist > 0:
+                for probe_size in range(
+                    max(unit_length - max_indel_probe, unit_length // 2),
+                    min(unit_length + max_indel_probe + 1, remaining + 1),
+                ):
+                    if probe_size == unit_length:
+                        continue
+                    window = sequence[pos : pos + probe_size]
+                    result = classify_repeat(window, repeat_dict)
+                    dist = (
+                        0
+                        if result["match"] == "exact"
+                        else result.get("edit_distance", 999)
+                    )
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_result = result
+                        best_window_size = probe_size
+                    if best_dist <= 1:
+                        break
 
         assert best_result is not None
         result = best_result

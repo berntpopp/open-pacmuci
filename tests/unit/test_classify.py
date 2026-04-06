@@ -109,13 +109,14 @@ class TestClassifyRepeat:
         assert any(d["type"] == "insertion" for d in result["differences"])
 
     def test_unknown_with_large_deletion(self, repeat_dict):
-        """Repeat X with 14bp deletion is still closest to X."""
+        """Repeat X with 14bp deletion matches del18_31 template exactly."""
         x_seq = repeat_dict.repeats["X"]
-        # Simulate del18_31: delete positions 17-30 (0-indexed)
+        # Simulate del18_31: delete positions 18-31 (1-based)
         mutated = x_seq[:17] + x_seq[31:]
         result = classify_repeat(mutated, repeat_dict)
-        assert result["closest_match"] == "X"
-        assert any(d["type"] == "deletion" for d in result["differences"])
+        # Now matches the del18_31 mutation template exactly
+        assert result["match"] == "exact"
+        assert result["type"] == "X:del18_31"
 
     def test_identity_pct_reported(self, repeat_dict):
         """Identity percentage is included in result."""
@@ -188,3 +189,53 @@ class TestSequenceConfidenceSummary:
         result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
         assert result["allele_confidence"] < 1.0
         assert result["exact_match_pct"] < 100.0
+
+
+class TestMutationTemplateMatching:
+    """Tests for exact matching against known mutation templates."""
+
+    def test_dupc_exact_template_match(self, repeat_dict):
+        """dupC on X matches the pre-computed 61bp template exactly."""
+        x_seq = repeat_dict.repeats["X"]
+        dupc_seq = x_seq[:60] + "C"  # 61bp: insert C at end
+        result = classify_repeat(dupc_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "X:dupC"
+        assert result["confidence"] == 1.0
+
+    def test_ins16bp_exact_template_match(self, repeat_dict):
+        """16bp insertion on C matches the 76bp template exactly."""
+        c_seq = repeat_dict.repeats["C"]
+        ins_seq = c_seq[:57] + "GGGCTCCACCGCCCCC" + c_seq[57:]  # 76bp
+        result = classify_repeat(ins_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "C:ins16bp"
+        assert result["confidence"] == 1.0
+
+    def test_del18_31_exact_template_match(self, repeat_dict):
+        """14bp deletion on X matches the 46bp template exactly."""
+        x_seq = repeat_dict.repeats["X"]
+        del_seq = x_seq[:17] + x_seq[31:]  # 46bp: delete pos 18-31 (1-based)
+        result = classify_repeat(del_seq, repeat_dict)
+        assert result["match"] == "exact"
+        assert result["type"] == "X:del18_31"
+
+    def test_sequence_with_dupc_classifies_correctly(self, repeat_dict):
+        """classify_sequence finds dupC at correct window size."""
+        x_seq = repeat_dict.repeats["X"]
+        dupc_seq = x_seq[:60] + "C"  # 61bp
+        full = x_seq + dupc_seq + x_seq
+        result = classify_sequence(full, repeat_dict)
+        assert len(result["repeats"]) == 3
+        assert result["repeats"][1]["type"] == "X:dupC"
+        assert result["repeats"][1]["match"] == "exact"
+
+    def test_sequence_with_16bp_ins_classifies_correctly(self, repeat_dict):
+        """classify_sequence handles 76bp mutated repeat with template match."""
+        x_seq = repeat_dict.repeats["X"]
+        c_seq = repeat_dict.repeats["C"]
+        ins_seq = c_seq[:57] + "GGGCTCCACCGCCCCC" + c_seq[57:]
+        full = x_seq + ins_seq + x_seq
+        result = classify_sequence(full, repeat_dict)
+        assert len(result["repeats"]) == 3
+        assert result["repeats"][1]["type"] == "C:ins16bp"
