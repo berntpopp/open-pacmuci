@@ -252,6 +252,150 @@ def filter_vcf(
     return filtered
 
 
+def parse_vcf_genotypes(vcf_path: Path) -> list[dict]:
+    """Parse VCF to extract variant positions and genotypes.
+
+    Returns list of dicts with keys: chrom, pos, ref, alt, genotype.
+    """
+    try:
+        output = run_tool(
+            [
+                "bcftools",
+                "query",
+                "-f",
+                "%CHROM\\t%POS\\t%REF\\t%ALT\\t[%GT]\\n",
+                str(vcf_path),
+            ]
+        )
+    except RuntimeError:
+        return []
+
+    variants: list[dict] = []
+    for line in output.strip().splitlines():
+        if not line:
+            continue
+        fields = line.split("\t")
+        if len(fields) < 5:
+            continue
+        variants.append(
+            {
+                "chrom": fields[0],
+                "pos": int(fields[1]),
+                "ref": fields[2],
+                "alt": fields[3],
+                "genotype": fields[4],
+            }
+        )
+    return variants
+
+
+def disambiguate_same_length_alleles(
+    bam_path: Path,
+    reference_path: Path,
+    alleles: dict,
+    output_dir: Path,
+    clair3_model: str = "",
+    threads: int = 4,
+    min_qual: float = 15.0,
+    min_dp: int = 5,
+) -> dict[str, Path]:
+    """Disambiguate same-length alleles using Clair3 genotype calls.
+
+    Runs Clair3 on all reads, checks for heterozygous (0/1) variants.
+    If found, creates two VCFs: one with only hom-alt variants (WT allele),
+    one with all variants (mutant allele).
+
+    Returns dict mapping allele key to filtered VCF path.
+    Updates alleles["homozygous"] based on findings.
+    """
+    allele_info = alleles["allele_1"]
+    contig_name = allele_info["contig_name"]
+    cluster_contigs = allele_info["cluster_contigs"]
+    merged_dir = output_dir / "merged"
+
+    # Remap all cluster reads to peak contig
+    merged_bam = _extract_and_remap_reads(
+        bam_path,
+        cluster_contigs,
+        contig_name,
+        reference_path,
+        merged_dir,
+        threads,
+    )
+
+    # Run Clair3
+    contig_ref = merged_dir / f"{contig_name}.fa"
+    clair3_dir = merged_dir / "clair3"
+    raw_vcf = run_clair3(
+        merged_bam,
+        contig_ref,
+        clair3_dir,
+        model_path=clair3_model,
+        threads=threads,
+    )
+    filtered_vcf = filter_vcf(
+        raw_vcf, contig_ref, merged_dir, min_qual=min_qual, min_dp=min_dp
+    )
+
+    # Check genotypes
+    variants = parse_vcf_genotypes(filtered_vcf)
+    het_variants = [
+        v
+        for v in variants
+        if "/" in v["genotype"]
+        and v["genotype"] not in ("0/0", "1/1", "./.", ".|.")
+    ]
+
+    results: dict[str, Path] = {}
+
+    if not het_variants:
+        # Truly homozygous -- no het variants found
+        alleles["homozygous"] = True
+        results["allele_1"] = filtered_vcf
+        return results
+
+    # Compound heterozygous -- split into two VCFs
+    alleles["homozygous"] = False
+
+    # allele_1 (WT): exclude het variants, keep only hom-alt
+    wt_vcf = output_dir / "allele_1" / "variants.vcf.gz"
+    wt_vcf.parent.mkdir(parents=True, exist_ok=True)
+    run_tool(
+        [
+            "bcftools",
+            "view",
+            "-i",
+            'GT="1/1" || GT="1|1"',
+            "-o",
+            str(wt_vcf),
+            "-O",
+            "z",
+            str(filtered_vcf),
+        ]
+    )
+    run_tool(["bcftools", "index", str(wt_vcf)])
+    results["allele_1"] = wt_vcf
+
+    # allele_2 (mutant): include all variants
+    mut_vcf = output_dir / "allele_2" / "variants.vcf.gz"
+    mut_vcf.parent.mkdir(parents=True, exist_ok=True)
+    run_tool(
+        [
+            "bcftools",
+            "view",
+            "-o",
+            str(mut_vcf),
+            "-O",
+            "z",
+            str(filtered_vcf),
+        ]
+    )
+    run_tool(["bcftools", "index", str(mut_vcf)])
+    results["allele_2"] = mut_vcf
+
+    return results
+
+
 def call_variants_per_allele(
     bam_path: Path,
     reference_path: Path,
@@ -271,6 +415,8 @@ def call_variants_per_allele(
     2. Calls variants with Clair3.
     3. Filters the VCF with :func:`filter_vcf`.
 
+    For same-length alleles, delegates to :func:`disambiguate_same_length_alleles`.
+
     Args:
         bam_path: Path to the full mapping BAM.
         reference_path: Path to the ladder reference FASTA.
@@ -285,6 +431,18 @@ def call_variants_per_allele(
         Dictionary mapping allele key (``"allele_1"`` / ``"allele_2"``) to
         the filtered VCF path.
     """
+    if alleles.get("same_length"):
+        return disambiguate_same_length_alleles(
+            bam_path,
+            reference_path,
+            alleles,
+            output_dir,
+            clair3_model,
+            threads,
+            min_qual,
+            min_dp,
+        )
+
     results: dict[str, Path] = {}
 
     for allele_key in ("allele_1", "allele_2"):

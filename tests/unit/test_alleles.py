@@ -99,10 +99,12 @@ class TestDetectAlleles:
         assert lengths == [60 + PRE_AFTER_REPEAT_COUNT, 80 + PRE_AFTER_REPEAT_COUNT]
 
     def test_homozygous_detection(self):
-        """Single dominant peak is reported as homozygous."""
+        """Single dominant peak is reported as same_length (disambiguation pending)."""
         counts = parse_idxstats(IDXSTATS_HOMOZYGOUS)
         result = detect_alleles(counts, min_coverage=10)
-        assert result["homozygous"] is True
+        # Now same_length=True, homozygous=False (disambiguation happens later)
+        assert result["same_length"] is True
+        assert result["homozygous"] is False
         assert result["allele_1"]["length"] == 60 + PRE_AFTER_REPEAT_COUNT
 
     def test_low_coverage_raises(self):
@@ -320,6 +322,31 @@ class TestBuildAlleleInfo:
         cluster = self._cluster(51, 400, contigs=[(50, 100), (51, 200), (52, 100)])
         info = _build_allele_info(cluster)
         assert info["cluster_contigs"] == ["contig_50", "contig_51", "contig_52"]
+
+class TestSameLengthDetection:
+    """Tests for same_length allele detection."""
+
+    def test_single_cluster_sets_same_length(self):
+        """Single cluster sets same_length=True."""
+        counts = parse_idxstats(IDXSTATS_HOMOZYGOUS)
+        result = detect_alleles(counts, min_coverage=10)
+        assert result["same_length"] is True
+
+    def test_same_length_keeps_allele2_data(self):
+        """same_length allele_2 has contig_name (not None)."""
+        counts = parse_idxstats(IDXSTATS_HOMOZYGOUS)
+        result = detect_alleles(counts, min_coverage=10)
+        assert result["allele_2"]["contig_name"] is not None
+
+    def test_different_lengths_no_same_length(self):
+        """Different-length alleles have same_length=False."""
+        counts = parse_idxstats(IDXSTATS_TWO_PEAKS)
+        result = detect_alleles(counts, min_coverage=10)
+        assert result.get("same_length", False) is False
+
+
+class TestBuildAlleleInfoExtra:
+    """Extra tests for _build_allele_info (continuation)."""
 
     def test_detect_alleles_with_bam_calls_refine(self):
         """detect_alleles calls refine_peak_contig when bam_path is provided."""
