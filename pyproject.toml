@@ -37,6 +37,10 @@ dev = [
     "ruff==0.15.9",
     "mypy>=1.8.0",
     "types-PyYAML>=6.0",
+    "types-jinja2>=2.11",
+]
+report = [
+    "jinja2>=3.1.0",
 ]
 docs = [
     "mkdocs-material>=9.5.0",
