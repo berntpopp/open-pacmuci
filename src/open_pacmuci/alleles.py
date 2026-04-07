@@ -47,6 +47,7 @@ class AlleleResult(TypedDict):
     homozygous: bool
     same_length: bool
 
+
 logger = logging.getLogger(__name__)
 
 # Number of fixed repeat units in the ladder reference (pre-repeats 1-5 + after-repeats 6-9).
@@ -342,7 +343,7 @@ def detect_alleles(
     counts: dict[int, int],
     min_coverage: int = 10,
     bam_path: Path | None = None,
-) -> AlleleResult:
+) -> dict:
     """Detect allele lengths from read count distribution across ladder contigs.
 
     Finds two peak clusters in the read distribution. Each cluster represents

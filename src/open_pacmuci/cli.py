@@ -350,12 +350,12 @@ def run(
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
     from open_pacmuci.calling import call_variants_per_allele
-    from open_pacmuci.vcf import parse_vcf_variants
     from open_pacmuci.classify import classify_sequence
     from open_pacmuci.config import load_repeat_dictionary
     from open_pacmuci.consensus import build_consensus_per_allele
     from open_pacmuci.mapping import get_idxstats, map_reads
     from open_pacmuci.tools import check_tools, get_tool_versions
+    from open_pacmuci.vcf import parse_vcf_variants
 
     check_tools(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
     tool_versions = get_tool_versions(["minimap2", "samtools", "bcftools", "run_clair3.sh"])

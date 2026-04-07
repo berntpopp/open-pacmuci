@@ -538,7 +538,7 @@ class TestForwardClassify:
         """Single known repeat classifies with exact match, 0 mutations, offset=0."""
         x_seq = repeat_dict.repeats["X"]
         unit_length = repeat_dict.repeat_length_bp
-        repeats, mutations, labels, pos, cumulative_offset = _forward_classify(
+        repeats, mutations, _labels, _pos, cumulative_offset = _forward_classify(
             x_seq, repeat_dict, unit_length, max_indel_probe=30
         )
         assert len(repeats) == 1
@@ -553,7 +553,7 @@ class TestForwardClassify:
         a_seq = repeat_dict.repeats.get("A", x_seq)  # fall back to X if A absent
         sequence = x_seq + a_seq
         unit_length = repeat_dict.repeat_length_bp
-        repeats, mutations, labels, pos, cumulative_offset = _forward_classify(
+        repeats, mutations, _labels, _pos, cumulative_offset = _forward_classify(
             sequence, repeat_dict, unit_length, max_indel_probe=30
         )
         assert len(repeats) == 2
@@ -578,7 +578,7 @@ class TestApplyBidirectionalFallback:
         initial_count = len(repeats)
 
         # forward_pos should already be at or past the threshold
-        result_repeats, result_mutations, result_labels = _apply_bidirectional_fallback(
+        result_repeats, _result_mutations, _result_labels = _apply_bidirectional_fallback(
             sequence, repeat_dict, repeats, mutations, labels, forward_pos
         )
         # No additional repeats should have been appended

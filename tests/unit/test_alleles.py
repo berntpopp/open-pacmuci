@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -371,13 +372,13 @@ class TestBuildAlleleInfoExtra:
 # Helper: build SAM lines for _split_cluster_by_indel tests
 # ---------------------------------------------------------------------------
 
+
 def _make_indel_sam_lines(contig: str, cigar: str, n: int = 5) -> list[str]:
     """Return *n* minimal SAM lines all mapping to *contig* with *cigar*."""
     seq = "A" * 10
     qual = "I" * 10
     return [
-        f"read_{contig}_{i}\t0\t{contig}\t1\t60\t{cigar}\t*\t0\t0\t{seq}\t{qual}"
-        for i in range(n)
+        f"read_{contig}_{i}\t0\t{contig}\t1\t60\t{cigar}\t*\t0\t0\t{seq}\t{qual}" for i in range(n)
     ]
 
 
@@ -388,7 +389,7 @@ class TestSplitClusterByIndel:
     # Cluster fixture spanning contigs 40..50
     # contigs list: [(40,50),(42,50),(45,50),(48,50),(50,50)]
     # ------------------------------------------------------------------
-    _CLUSTER = {
+    _CLUSTER: ClassVar[dict] = {
         "center": 45,
         "total_reads": 250,
         "contigs": [(40, 50), (42, 50), (45, 50), (48, 50), (50, 50)],

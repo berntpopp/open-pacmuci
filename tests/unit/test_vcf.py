@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from open_pacmuci.vcf import filter_vcf, parse_vcf_genotypes, parse_vcf_variants
+from open_pacmuci.vcf import filter_vcf, parse_vcf_genotypes
 
 
 class TestFilterVcf:
