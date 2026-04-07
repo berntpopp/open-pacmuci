@@ -95,7 +95,14 @@ export PATH="/home/bernt-popp/miniforge3/envs/env_pacbio/bin:$PATH"
 python scripts/generate_testdata.py
 ```
 
-This creates 10 samples in `tests/data/generated/` covering dupC, dupA, insG, insCCCC, del18_31, normal, homozygous, asymmetric, short, and long alleles at 200x coverage.
+This creates 26 samples in `tests/data/generated/` covering:
+- Core mutation types: dupC, dupA, insG, insCCCC, del18_31, normal
+- Edge cases: homozygous (60/60), asymmetric (25/140), short (25/30), long (120/140)
+- QUAL variance: dupC at 4 additional seeds (s2-s5)
+- Allele length combos: dupC at 40/50, 80/100, 100/120
+- Close allele pairs: 50/55, 50/57, 50/60 (mutation + normal)
+- Long allele mutations: dupA and insG at 100/120
+- Low coverage: dupC at 50x
 
 **Run integration tests:**
 
@@ -104,13 +111,23 @@ export PATH="/home/bernt-popp/miniforge3/envs/env_pacbio/bin:$PATH"
 uv run pytest tests/integration/ -v --no-cov
 ```
 
-**Known limitations (allele detection, not classification):**
-- `sample_asymmetric_25_140`: 140-repeat allele undetectable (only 2 reads due to extreme PCR bias)
-- `sample_short_25_30`: alleles 5 repeats apart merge into one cluster (no gap for clustering)
+**Batch analysis (full pipeline on all samples):**
 
-### Mutation catalog validation
+```bash
+export PATH="/home/bernt-popp/miniforge3/envs/env_clair3/bin:/home/bernt-popp/miniforge3/envs/env_pacbio/bin:$PATH"
+python scripts/batch_analyze.py
+```
 
-Classification was validated against all 10 MucOneUp samples (20 haplotypes): 20/20 perfect VNTR reconstruction with 100% confidence when given the correct VNTR sequence.
+Results are written to `tests/results/batch_results.json`. See `.planning/BENCHMARK_RESULTS.md` for detailed analysis.
+
+**Known limitations:**
+- `sample_homozygous_60_60`: indel-valley splitting incorrectly splits same-length alleles
+- `sample_dupc_100_120`, `sample_long_120_140`: Clair3 cannot detect 1bp insertions in >6kb tandem repeats
+- `sample_asymmetric_25_140`: 140-repeat allele detectable but with extreme PCR bias
+
+### Benchmark results (v0.3.0, min_qual=5.0)
+
+44 samples: 25 TP (89.3% sensitivity), 15 TN (93.8% specificity), 3 FN, 1 FP. See `.planning/BENCHMARK_RESULTS.md`.
 
 ## Planning
 

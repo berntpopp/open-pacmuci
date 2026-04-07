@@ -536,16 +536,46 @@ def classify_sequence(
     }
 
 
+def _qual_to_confidence(qual: float) -> float:
+    """Map VCF QUAL score to a confidence weight in [0, 1].
+
+    Uses linear interpolation between QUAL=5 (0.5) and QUAL=20 (1.0).
+    Below QUAL=5, returns 0.3 as a floor. Above 20, returns 1.0.
+
+    This replaces the previous binary threshold (QUAL>=20 → 1.0, else 0.7)
+    to give a continuous signal that better reflects Clair3's confidence.
+
+    Args:
+        qual: VCF QUAL score.
+
+    Returns:
+        Confidence weight between 0.3 and 1.0.
+    """
+    if qual >= 20.0:
+        return 1.0
+    if qual >= 5.0:
+        return 0.5 + 0.5 * (qual - 5.0) / 15.0
+    return 0.3
+
+
 def validate_mutations_against_vcf(
     classification_result: dict,
     vcf_variants: list[dict] | None = None,
     flank_length: int = 500,
     unit_length: int = 60,
+    boundary_repeats: int = 3,
+    boundary_penalty: float = 0.5,
 ) -> dict:
     """Cross-validate detected mutations against VCF variant positions.
 
     For each mutation, check if a VCF variant overlaps the repeat's
-    genomic position.  Adds ``vcf_support`` flag and adjusts confidence.
+    genomic position.  Adds ``vcf_support`` flag and adjusts confidence
+    using the continuous :func:`_qual_to_confidence` function.
+
+    Mutations near the ends of an allele (within *boundary_repeats* of
+    the last repeat) receive an additional confidence penalty because
+    Clair3 produces systematic artifacts at contig boundaries where
+    read alignment quality degrades.
 
     Args:
         classification_result: Output from :func:`classify_sequence`.
@@ -553,6 +583,10 @@ def validate_mutations_against_vcf(
             If None, VCF validation is skipped (standalone classify mode).
         flank_length: Flanking bp on each side of the contig.
         unit_length: Expected repeat unit length (60bp).
+        boundary_repeats: Number of repeats at allele ends subject to
+            boundary penalty (default 3).
+        boundary_penalty: Confidence multiplier for boundary mutations
+            (default 0.5).
 
     Returns:
         Updated classification result with VCF validation annotations.
@@ -563,6 +597,8 @@ def validate_mutations_against_vcf(
 
     if vcf_variants is None:
         return result
+
+    total_repeats = len(result["repeats"])
 
     for mutation in result["mutations_detected"]:
         repeat_idx = mutation["repeat_index"]
@@ -575,16 +611,24 @@ def validate_mutations_against_vcf(
         mutation["vcf_support"] = len(supporting) > 0
         mutation["vcf_qual"] = max((v["qual"] for v in supporting), default=0.0)
 
+        # Check if mutation is near the allele boundary.
+        # Only apply to alleles long enough for boundary to be meaningful
+        # (at least 2x boundary_repeats).
+        is_boundary = (
+            total_repeats > 2 * boundary_repeats and repeat_idx > total_repeats - boundary_repeats
+        )
+        mutation["boundary"] = is_boundary
+
         # Adjust confidence in the corresponding repeat
         if repeat_idx - 1 < len(result["repeats"]):
             repeat_result = result["repeats"][repeat_idx - 1]
             base_confidence = repeat_result.get("confidence", 1.0)
-            if supporting:
-                best_qual = mutation["vcf_qual"]
-                vcf_score = 1.0 if best_qual >= 20 else 0.7
-            else:
-                vcf_score = 0.3
-            repeat_result["confidence"] = round(base_confidence * vcf_score, 4)
+            vcf_score = _qual_to_confidence(mutation["vcf_qual"]) if supporting else 0.3
+            confidence = base_confidence * vcf_score
+            # Apply boundary penalty for mutations near allele ends
+            if is_boundary:
+                confidence *= boundary_penalty
+            repeat_result["confidence"] = round(confidence, 4)
 
     # Recompute allele_confidence
     confidences = [r.get("confidence", 1.0) for r in result["repeats"]]

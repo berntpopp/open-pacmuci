@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from open_pacmuci.classify import (
+    _qual_to_confidence,
     characterize_differences,
     classify_repeat,
     classify_sequence,
@@ -328,3 +329,161 @@ class TestBidirectionalClassification:
         result = classify_sequence(x_seq * 5, repeat_dict)
         assert all(r["match"] == "exact" for r in result["repeats"])
         assert result["allele_confidence"] == 1.0
+
+
+class TestQualToConfidence:
+    """Tests for _qual_to_confidence continuous scoring function."""
+
+    def test_high_qual_returns_1(self):
+        """QUAL >= 20 returns confidence weight 1.0."""
+        assert _qual_to_confidence(20.0) == 1.0
+        assert _qual_to_confidence(25.0) == 1.0
+        assert _qual_to_confidence(100.0) == 1.0
+
+    def test_mid_qual_interpolates(self):
+        """QUAL between 5 and 20 interpolates linearly between 0.5 and 1.0."""
+        # QUAL=12.5 is midpoint of [5, 20] → should give 0.75
+        assert _qual_to_confidence(12.5) == pytest.approx(0.75, abs=0.01)
+
+    def test_qual_5_returns_0_5(self):
+        """QUAL=5.0 returns 0.5 (lower bound of interpolation)."""
+        assert _qual_to_confidence(5.0) == pytest.approx(0.5, abs=0.01)
+
+    def test_low_qual_returns_0_3(self):
+        """QUAL < 5 returns 0.3 floor."""
+        assert _qual_to_confidence(4.9) == 0.3
+        assert _qual_to_confidence(1.0) == 0.3
+        assert _qual_to_confidence(0.0) == 0.3
+
+    def test_pair_5004_qual_gets_moderate_score(self):
+        """QUAL=11.23 (pair_5004 case) gets ~0.71 — not filtered, but penalized."""
+        score = _qual_to_confidence(11.23)
+        assert 0.6 < score < 0.8
+
+
+class TestContinuousQualScoring:
+    """Tests for continuous QUAL scoring in validate_mutations_against_vcf."""
+
+    def test_high_qual_variant_gives_full_confidence(self, repeat_dict):
+        """QUAL=25 variant gives confidence weight 1.0."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        vcf_variants = [{"pos": 560, "qual": 25.0}]
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=vcf_variants, flank_length=500, unit_length=60
+        )
+        mut_repeat = validated["repeats"][1]
+        # base_confidence * 1.0 (QUAL>=20)
+        assert mut_repeat["confidence"] > 0.9
+
+    def test_moderate_qual_variant_penalizes_confidence(self, repeat_dict):
+        """QUAL=11 variant gets intermediate confidence (not 1.0, not 0.3)."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        vcf_variants = [{"pos": 560, "qual": 11.0}]
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=vcf_variants, flank_length=500, unit_length=60
+        )
+        mut_repeat = validated["repeats"][1]
+        # Should be between 0.3 and 1.0 (moderate penalty)
+        assert 0.3 < mut_repeat["confidence"] < 0.9
+
+    def test_no_vcf_support_gives_low_confidence(self, repeat_dict):
+        """No VCF variant at mutation position gives 0.3 weight."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        validated = validate_mutations_against_vcf(
+            result, vcf_variants=[], flank_length=500, unit_length=60
+        )
+        mut_repeat = validated["repeats"][1]
+        base = result["repeats"][1].get("confidence", 1.0)
+        assert mut_repeat["confidence"] == pytest.approx(base * 0.3, abs=0.01)
+
+
+class TestBoundaryPenalty:
+    """Tests for boundary repeat penalty in validate_mutations_against_vcf."""
+
+    def test_boundary_mutation_penalized(self, repeat_dict):
+        """Mutation in last 3 repeats gets boundary penalty."""
+        x_seq = repeat_dict.repeats["X"]
+        # 10 repeats: mutation at repeat 9 → within boundary_repeats=3 of end
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        result = classify_sequence(x_seq * 8 + mutated + x_seq, repeat_dict)
+
+        # VCF at repeat 9 position: flank(500) + 8*60 = 980
+        vcf_variants = [{"pos": 980, "qual": 25.0}]
+        validated = validate_mutations_against_vcf(
+            result,
+            vcf_variants=vcf_variants,
+            flank_length=500,
+            unit_length=60,
+            boundary_repeats=3,
+            boundary_penalty=0.5,
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut["boundary"] is True
+        # Confidence = base * qual_score(1.0) * boundary_penalty(0.5)
+        mut_repeat = validated["repeats"][8]
+        assert mut_repeat["confidence"] < 0.6
+
+    def test_non_boundary_mutation_not_penalized(self, repeat_dict):
+        """Mutation at repeat 2 of 10 repeats is not penalized."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        # 10 repeats: mutation at repeat 2 (well within interior)
+        result = classify_sequence(x_seq + mutated + x_seq * 8, repeat_dict)
+
+        vcf_variants = [{"pos": 560, "qual": 25.0}]
+        validated = validate_mutations_against_vcf(
+            result,
+            vcf_variants=vcf_variants,
+            flank_length=500,
+            unit_length=60,
+            boundary_repeats=3,
+            boundary_penalty=0.5,
+        )
+        mut = validated["mutations_detected"][0]
+        assert mut["boundary"] is False
+
+    def test_boundary_flag_in_mutation_dict(self, repeat_dict):
+        """Mutations have 'boundary' key indicating position status."""
+        x_seq = repeat_dict.repeats["X"]
+        mutated = x_seq[:40] + "TT" + x_seq[40:]
+        result = classify_sequence(x_seq + mutated + x_seq, repeat_dict)
+        vcf_variants = [{"pos": 560, "qual": 25.0}]
+        validated = validate_mutations_against_vcf(
+            result,
+            vcf_variants=vcf_variants,
+            flank_length=500,
+            unit_length=60,
+        )
+        for mut in validated["mutations_detected"]:
+            assert "boundary" in mut
+
+    def test_pair_5003_scenario_penalized(self, repeat_dict):
+        """Simulates pair_5003: FP at repeat 116 of 118 gets boundary penalty."""
+        x_seq = repeat_dict.repeats["X"]
+        # Build 118-repeat sequence with a "mutation" at repeat 116
+        repeats_before = x_seq * 115
+        mutated = x_seq[:40] + "TT" + x_seq[40:]  # repeat 116
+        repeats_after = x_seq * 2  # repeats 117-118
+        seq = repeats_before + mutated + repeats_after
+        result = classify_sequence(seq, repeat_dict)
+
+        # VCF variant at repeat 116: flank(500) + 115*60
+        vcf_variants = [{"pos": 7400, "qual": 20.0}]
+        validated = validate_mutations_against_vcf(
+            result,
+            vcf_variants=vcf_variants,
+            flank_length=500,
+            unit_length=60,
+            boundary_repeats=3,
+            boundary_penalty=0.5,
+        )
+        # Repeat 116 of 118 → within last 3 → boundary=True
+        if validated["mutations_detected"]:
+            mut = validated["mutations_detected"][0]
+            assert mut["boundary"] is True

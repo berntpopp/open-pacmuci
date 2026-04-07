@@ -139,6 +139,12 @@ def alleles(input_path: str, min_coverage: int, output_dir: str) -> None:
 @click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 @click.option("--clair3-model", type=str, default="", help="Path to Clair3 model.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
+@click.option(
+    "--min-qual",
+    type=float,
+    default=5.0,
+    help="Minimum QUAL score for VCF filtering (default 5.0).",
+)
 def call(
     input_path: str,
     reference: str,
@@ -146,6 +152,7 @@ def call(
     output_dir: str,
     clair3_model: str,
     threads: int,
+    min_qual: float,
 ) -> None:
     """Call variants with Clair3."""
     from open_pacmuci.calling import call_variants_per_allele
@@ -165,6 +172,7 @@ def call(
         Path(output_dir),
         clair3_model,
         threads,
+        min_qual=min_qual,
     )
     for key, vcf in vcfs.items():
         click.echo(f"{key}: {vcf}")
@@ -305,6 +313,12 @@ def classify(
 @click.option("--clair3-model", type=str, default="", help="Path to Clair3 model.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
 @click.option("--min-coverage", type=int, default=10, help="Minimum read coverage.")
+@click.option(
+    "--min-qual",
+    type=float,
+    default=5.0,
+    help="Minimum QUAL score for VCF filtering (default 5.0).",
+)
 def run(
     input_path: str,
     output_dir: str,
@@ -312,6 +326,7 @@ def run(
     clair3_model: str,
     threads: int,
     min_coverage: int,
+    min_qual: float,
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
@@ -350,6 +365,7 @@ def run(
         out,
         clair3_model,
         threads,
+        min_qual=min_qual,
     )
 
     # Step 4: Build consensus
