@@ -241,6 +241,28 @@ class TestClassifySubcommand:
         assert "Structure:" in result.output
 
 
+class TestVerboseQuietFlags:
+    """Tests for the --verbose / --quiet global flags."""
+
+    def test_verbose_flag_sets_info_level(self):
+        """-v flag is accepted without error."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["-v", "--version"])
+        assert result.exit_code == 0
+
+    def test_double_verbose_sets_debug_level(self):
+        """-vv flag is accepted without error."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["-vv", "--version"])
+        assert result.exit_code == 0
+
+    def test_quiet_flag_accepted(self):
+        """-q flag is accepted without error."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["-q", "--version"])
+        assert result.exit_code == 0
+
+
 class TestMapSubcommand:
     """Tests for the map subcommand with mocked tools.
 

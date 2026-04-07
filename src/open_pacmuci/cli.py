@@ -13,8 +13,26 @@ from open_pacmuci.version import __version__
 
 @click.group()
 @click.version_option(version=__version__, prog_name="open-pacmuci")
-def main() -> None:
+@click.option("-v", "--verbose", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG).")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress non-error output.")
+@click.pass_context
+def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
     """open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data."""
+    import logging
+
+    if quiet:
+        level = logging.WARNING
+    elif verbose >= 2:
+        level = logging.DEBUG
+    elif verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+
+    logging.basicConfig(
+        level=level,
+        format="%(name)s %(levelname)s: %(message)s",
+    )
 
 
 @main.command()
