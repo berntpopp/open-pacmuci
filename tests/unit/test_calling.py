@@ -290,9 +290,7 @@ class TestCallVariantsPerAllele:
         ref.touch()
         alleles = self._make_alleles_heterozygous()
 
-        call_variants_per_allele(
-            bam, ref, alleles, tmp_path, platform="ont", preset="lr:hq"
-        )
+        call_variants_per_allele(bam, ref, alleles, tmp_path, platform="ont", preset="lr:hq")
 
         all_calls = [c[0][0] for c in mock_run_tool.call_args_list]
         minimap2_calls = [cmd for cmd in all_calls if cmd[0] == "minimap2"]
@@ -445,7 +443,9 @@ class TestDisambiguateSameLengthAlleles:
     @patch("open_pacmuci.vcf.run_tool", return_value="")
     @patch("open_pacmuci.calling.run_tool", return_value="")
     @patch("open_pacmuci.calling.parse_vcf_genotypes", return_value=[])
-    def test_platform_and_preset_threaded_through(self, mock_geno, mock_run, mock_vcf_tool, tmp_path):
+    def test_platform_and_preset_threaded_through(
+        self, mock_geno, mock_run, mock_vcf_tool, tmp_path
+    ):
         """platform and preset are forwarded: minimap2 gets -x lr:hq, clair3 gets --platform=ont."""
         alleles = {
             "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},

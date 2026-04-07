@@ -86,6 +86,7 @@ def _extract_and_remap_reads(
         reference_path: Full ladder reference FASTA (for extracting the contig).
         output_dir: Working directory for intermediate files.
         threads: Thread count for minimap2/samtools.
+        preset: minimap2 preset (default ``"map-hifi"``). Use ``"lr:hq"`` for ONT.
 
     Returns:
         Path to the remapped, sorted, indexed BAM.
@@ -341,6 +342,8 @@ def call_variants_per_allele(
             Low-confidence variants are retained but penalized in the
             confidence scoring system rather than hard-filtered.
         min_dp: Minimum INFO/DP for VCF filtering (default 5).
+        platform: Sequencing platform for Clair3 (default ``"hifi"``).
+        preset: minimap2 preset for remapping (default ``"map-hifi"``).
 
     Returns:
         Dictionary mapping allele key (``"allele_1"`` / ``"allele_2"``) to
