@@ -448,7 +448,7 @@ class TestRunSubcommand:
             ),
             patch(
                 "open_pacmuci.alleles.parse_idxstats",
-                return_value={"contig_51": 200, "contig_71": 150},
+                return_value={51: 200, 71: 150},
             ),
             patch(
                 "open_pacmuci.alleles.detect_alleles",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from open_pacmuci.vcf import filter_vcf, parse_vcf_genotypes
+from open_pacmuci.vcf import filter_vcf, parse_vcf_genotypes, parse_vcf_variants
 
 
 class TestFilterVcf:
@@ -191,3 +191,37 @@ class TestParseVcfGenotypes:
     def test_handles_runtime_error(self, mock_run_tool):
         mock_run_tool.side_effect = RuntimeError("fail")
         assert parse_vcf_genotypes(Path("/fake.vcf")) == []
+
+
+class TestParseVcfVariants:
+    """Tests for parse_vcf_variants."""
+
+    @patch("open_pacmuci.vcf.run_tool")
+    def test_parses_pos_and_qual(self, mock_run_tool):
+        """Parses position and quality from bcftools query output."""
+        mock_run_tool.return_value = "100\t23.4\n200\t15.7\n"
+        result = parse_vcf_variants(Path("/fake.vcf"))
+        assert len(result) == 2
+        assert result[0] == {"pos": 100, "qual": 23.4}
+        assert result[1] == {"pos": 200, "qual": 15.7}
+
+    @patch("open_pacmuci.vcf.run_tool")
+    def test_handles_runtime_error(self, mock_run_tool):
+        """Returns empty list on RuntimeError."""
+        mock_run_tool.side_effect = RuntimeError("fail")
+        assert parse_vcf_variants(Path("/fake.vcf")) == []
+
+    @patch("open_pacmuci.vcf.run_tool")
+    def test_skips_malformed_lines(self, mock_run_tool):
+        """Skips lines with non-numeric values."""
+        mock_run_tool.return_value = "100\t23.4\nbad\tline\n300\t10.0\n"
+        result = parse_vcf_variants(Path("/fake.vcf"))
+        assert len(result) == 2
+        assert result[0]["pos"] == 100
+        assert result[1]["pos"] == 300
+
+    @patch("open_pacmuci.vcf.run_tool")
+    def test_empty_output(self, mock_run_tool):
+        """Returns empty list for empty output."""
+        mock_run_tool.return_value = ""
+        assert parse_vcf_variants(Path("/fake.vcf")) == []

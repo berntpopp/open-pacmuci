@@ -23,6 +23,11 @@ from open_pacmuci.config import RepeatDictionary
 logger = logging.getLogger(__name__)
 
 
+# TypedDicts below document the expected structure of return values.
+# Functions return plain dicts for mypy compatibility; these types are
+# available for callers who want to annotate their own code.
+
+
 class RepeatDifference(TypedDict):
     """A single difference between a repeat sequence and its closest reference."""
 

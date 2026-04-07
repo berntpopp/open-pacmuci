@@ -28,6 +28,10 @@ from typing import TypedDict
 
 from open_pacmuci.tools import run_tool
 
+# TypedDicts below document the expected structure of return values.
+# Functions return plain dicts for mypy compatibility; these types are
+# available for callers who want to annotate their own code.
+
 
 class AlleleInfo(TypedDict):
     """Information about a single detected allele."""
@@ -319,7 +323,7 @@ def _split_cluster_by_indel(
     return [_make_sub_cluster(sub1), _make_sub_cluster(sub2)]
 
 
-def _build_allele_info(cluster: dict, best_contig: str | None = None) -> AlleleInfo:
+def _build_allele_info(cluster: dict, best_contig: str | None = None) -> dict:
     """Build allele info dict from a cluster.
 
     Args:
