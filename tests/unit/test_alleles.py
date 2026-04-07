@@ -11,6 +11,7 @@ import pytest
 from open_pacmuci.alleles import (
     PRE_AFTER_REPEAT_COUNT,
     _build_allele_info,
+    _split_cluster_by_indel,
     detect_alleles,
     parse_idxstats,
     refine_peak_contig,
@@ -364,3 +365,98 @@ class TestBuildAlleleInfoExtra:
         assert mock_refine.call_count == 2
         # The contig_name should come from the mock
         assert result["allele_1"]["contig_name"] == "contig_60"
+
+
+# ---------------------------------------------------------------------------
+# Helper: build SAM lines for _split_cluster_by_indel tests
+# ---------------------------------------------------------------------------
+
+def _make_indel_sam_lines(contig: str, cigar: str, n: int = 5) -> list[str]:
+    """Return *n* minimal SAM lines all mapping to *contig* with *cigar*."""
+    seq = "A" * 10
+    qual = "I" * 10
+    return [
+        f"read_{contig}_{i}\t0\t{contig}\t1\t60\t{cigar}\t*\t0\t0\t{seq}\t{qual}"
+        for i in range(n)
+    ]
+
+
+class TestSplitClusterByIndel:
+    """Tests for _split_cluster_by_indel valley splitting."""
+
+    # ------------------------------------------------------------------
+    # Cluster fixture spanning contigs 40..50
+    # contigs list: [(40,50),(42,50),(45,50),(48,50),(50,50)]
+    # ------------------------------------------------------------------
+    _CLUSTER = {
+        "center": 45,
+        "total_reads": 250,
+        "contigs": [(40, 50), (42, 50), (45, 50), (48, 50), (50, 50)],
+    }
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_returns_none_when_no_reads(self, mock_run_tool, tmp_path):
+        """Returns None when samtools view produces no alignment lines."""
+        mock_run_tool.return_value = ""
+        bam = tmp_path / "mapping.bam"
+
+        result = _split_cluster_by_indel(bam, self._CLUSTER)
+
+        assert result is None
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_returns_none_when_single_group(self, mock_run_tool, tmp_path):
+        """Returns None when all reads have similar indel lengths (single valley).
+
+        All reads use 3600M CIGAR → 0 bp indels on every contig.  The
+        indel series is flat, so only one valley exists and the function
+        must return None.
+        """
+        # Put reads on contigs 40, 42, 45, 48, 50 — all with 0-indel CIGAR
+        sam_lines: list[str] = []
+        for c, _ in self._CLUSTER["contigs"]:
+            sam_lines.extend(_make_indel_sam_lines(f"contig_{c}", "3600M"))
+        mock_run_tool.return_value = "\n".join(sam_lines)
+
+        bam = tmp_path / "mapping.bam"
+        result = _split_cluster_by_indel(bam, self._CLUSTER)
+
+        assert result is None
+
+    @patch("open_pacmuci.alleles.run_tool")
+    def test_splits_with_distinct_indel_groups(self, mock_run_tool, tmp_path):
+        """Returns 2 sub-clusters when reads fall into two distinct indel groups.
+
+        Layout (5 contigs, all with reads):
+          contig_40 → 0 bp indels   (valley A)
+          contig_42 → 180 bp indels (hill)
+          contig_45 → 360 bp indels (peak of hill)
+          contig_48 → 180 bp indels (hill)
+          contig_50 → 0 bp indels   (valley B)
+
+        Valleys are at positions 40 and 50 (10 apart ≥ 3 threshold).
+        The split point midpoint = (40+50)//2 = 45, so sub1 = contigs ≤ 45
+        and sub2 = contigs > 45.
+        """
+        sam_lines: list[str] = []
+        # Valley A: contig_40 — no indels
+        sam_lines.extend(_make_indel_sam_lines("contig_40", "3600M"))
+        # Hill: contig_42 and contig_45 — 180bp and 360bp insertions
+        sam_lines.extend(_make_indel_sam_lines("contig_42", "3420M180I"))
+        sam_lines.extend(_make_indel_sam_lines("contig_45", "3240M360I"))
+        # Hill descending: contig_48 — 180bp insertion
+        sam_lines.extend(_make_indel_sam_lines("contig_48", "3420M180I"))
+        # Valley B: contig_50 — no indels
+        sam_lines.extend(_make_indel_sam_lines("contig_50", "3600M"))
+        mock_run_tool.return_value = "\n".join(sam_lines)
+
+        bam = tmp_path / "mapping.bam"
+        result = _split_cluster_by_indel(bam, self._CLUSTER)
+
+        assert result is not None, "Expected two sub-clusters but got None"
+        assert len(result) == 2, f"Expected 2 sub-clusters, got {len(result)}"
+
+        centers = sorted(c["center"] for c in result)
+        # sub1 contains contigs 40, 42, 45  → weighted center = 40+42+45)/3 = ~42
+        # sub2 contains contigs 48, 50       → weighted center = (48+50)/2 = 49
+        assert centers[0] < centers[1], "Sub-cluster centers should be distinct"
