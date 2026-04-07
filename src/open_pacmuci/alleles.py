@@ -24,8 +24,28 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import TypedDict
 
 from open_pacmuci.tools import run_tool
+
+
+class AlleleInfo(TypedDict):
+    """Information about a single detected allele."""
+
+    length: int
+    reads: int
+    canonical_repeats: int
+    contig_name: str
+    cluster_contigs: list[str]
+
+
+class AlleleResult(TypedDict):
+    """Result of allele detection for a sample."""
+
+    allele_1: AlleleInfo
+    allele_2: AlleleInfo
+    homozygous: bool
+    same_length: bool
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +318,7 @@ def _split_cluster_by_indel(
     return [_make_sub_cluster(sub1), _make_sub_cluster(sub2)]
 
 
-def _build_allele_info(cluster: dict, best_contig: str | None = None) -> dict:
+def _build_allele_info(cluster: dict, best_contig: str | None = None) -> AlleleInfo:
     """Build allele info dict from a cluster.
 
     Args:
@@ -322,7 +342,7 @@ def detect_alleles(
     counts: dict[int, int],
     min_coverage: int = 10,
     bam_path: Path | None = None,
-) -> dict:
+) -> AlleleResult:
     """Detect allele lengths from read count distribution across ladder contigs.
 
     Finds two peak clusters in the read distribution. Each cluster represents
