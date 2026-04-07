@@ -87,8 +87,6 @@ class TestCheckTools:
         assert check_tools([]) is True
 
 
-
-
 def test_run_tool_logs_command(mocker, caplog):
     """run_tool logs the command at DEBUG level."""
     mocker.patch(
