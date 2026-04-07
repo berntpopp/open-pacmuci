@@ -144,6 +144,53 @@ h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
   transition: width 0.3s;
 }
 
+/* ── Tooltip ────────────────────────────────────────────── */
+.tip {
+  position: relative;
+  cursor: help;
+}
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0.35em 0.6em;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.tip:hover::after { opacity: 1; }
+/* wide variant for longer text */
+.tip-wide::after { white-space: normal; width: 220px; text-align: center; }
+
+/* ── Help icon ─────────────────────────────────────────── */
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-muted);
+  color: var(--fg-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
 /* ── Repeat structure ───────────────────────────────────── */
 .repeat-map { display: flex; flex-wrap: wrap; gap: 2px; margin: 0.75rem 0; }
 .repeat-unit {
@@ -154,7 +201,28 @@ h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
   position: relative;
   cursor: default;
 }
-.repeat-unit[title]::after { content: ""; }
+/* Rich CSS tooltip for repeat units */
+.repeat-unit::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.repeat-unit:hover::after { opacity: 1; }
+.repeat-unit:hover { transform: scaleY(1.3); border-color: var(--fg); z-index: 5; }
 
 /* Category colours */
 .ru-pre       { background: var(--clr-pre-bg); border-color: var(--clr-pre); }
@@ -282,7 +350,7 @@ details summary:hover { text-decoration: underline; }
      2. ALLELE SUMMARY
      ════════════════════════════════════════════════════════ -->
 <section aria-label="Allele summary">
-  <h2>Allele Summary</h2>
+  <h2>Allele Summary <span class="help-icon tip tip-wide" data-tip="Two alleles detected from read alignment to the reference ladder. Each allele's repeat count and read support are shown.">?</span></h2>
   {% set alleles = summary.get("alleles", {}) %}
   {% set a1 = alleles.get("allele_1", {}) %}
   {% set a2 = alleles.get("allele_2", {}) %}
@@ -297,24 +365,25 @@ details summary:hover { text-decoration: underline; }
     <div class="card">
       <h3>Allele 1</h3>
       <div class="allele-stat">
-        <div class="label">Repeat count</div>
+        <div class="label">Repeat count <span class="help-icon tip" data-tip="Total repeat units including 5 pre-repeats and 4 after-repeats">?</span></div>
         <div class="value">{{ a1.get("length", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Canonical repeats</div>
+        <div class="label">Canonical repeats <span class="help-icon tip" data-tip="Number of variable 60bp repeat units (excludes fixed pre/after-repeats)">?</span></div>
         <div class="value">{{ a1.get("canonical_repeats", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Reads</div>
+        <div class="label">Reads <span class="help-icon tip" data-tip="Total HiFi reads mapped to this allele's contig cluster">?</span></div>
         <div class="value">{{ a1.get("reads", 0) }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Contig</div>
+        <div class="label">Contig <span class="help-icon tip" data-tip="Best-matching reference ladder contig by alignment score">?</span></div>
         <div class="value">{{ a1.get("contig_name", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Read distribution</div>
-        <div class="read-bar-track" role="progressbar"
+        <div class="label">Read distribution <span class="help-icon tip tip-wide" data-tip="Proportion of reads for this allele. Shorter alleles amplify more in PCR, so unequal bars are normal.">?</span></div>
+        <div class="read-bar-track tip" data-tip="{{ a1.get('reads', 0) }} / {{ total_reads }} reads ({{ (a1.get('reads', 0) / total_reads * 100)|round(1) }}%)"
+             role="progressbar"
              aria-valuenow="{{ a1.get('reads', 0) }}" aria-valuemin="0"
              aria-valuemax="{{ total_reads }}"
              aria-label="Allele 1 read proportion">
@@ -328,24 +397,25 @@ details summary:hover { text-decoration: underline; }
     <div class="card">
       <h3>Allele 2</h3>
       <div class="allele-stat">
-        <div class="label">Repeat count</div>
+        <div class="label">Repeat count <span class="help-icon tip" data-tip="Total repeat units including 5 pre-repeats and 4 after-repeats">?</span></div>
         <div class="value">{{ a2.get("length", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Canonical repeats</div>
+        <div class="label">Canonical repeats <span class="help-icon tip" data-tip="Number of variable 60bp repeat units (excludes fixed pre/after-repeats)">?</span></div>
         <div class="value">{{ a2.get("canonical_repeats", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Reads</div>
+        <div class="label">Reads <span class="help-icon tip" data-tip="Total HiFi reads mapped to this allele's contig cluster">?</span></div>
         <div class="value">{{ a2.get("reads", 0) }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Contig</div>
+        <div class="label">Contig <span class="help-icon tip" data-tip="Best-matching reference ladder contig by alignment score">?</span></div>
         <div class="value">{{ a2.get("contig_name", "N/A") }}</div>
       </div>
       <div class="allele-stat">
-        <div class="label">Read distribution</div>
-        <div class="read-bar-track" role="progressbar"
+        <div class="label">Read distribution <span class="help-icon tip tip-wide" data-tip="Proportion of reads for this allele. Shorter alleles amplify more in PCR, so unequal bars are normal.">?</span></div>
+        <div class="read-bar-track tip" data-tip="{{ a2.get('reads', 0) }} / {{ total_reads }} reads ({{ (a2.get('reads', 0) / total_reads * 100)|round(1) }}%)"
+             role="progressbar"
              aria-valuenow="{{ a2.get('reads', 0) }}" aria-valuemin="0"
              aria-valuemax="{{ total_reads }}"
              aria-label="Allele 2 read proportion">
@@ -363,7 +433,7 @@ details summary:hover { text-decoration: underline; }
 {% set classifications = summary.get("classifications", {}) %}
 {% if classifications %}
 <section aria-label="Repeat structure visualization">
-  <h2>Repeat Structure</h2>
+  <h2>Repeat Structure <span class="help-icon tip tip-wide" data-tip="Each block is one 60bp repeat unit. Hover a block to see its type and position. Colors indicate the repeat category.">?</span></h2>
 
   {# Legend #}
   <div class="legend" aria-label="Repeat type legend">
@@ -394,7 +464,7 @@ details summary:hover { text-decoration: underline; }
         {% set cat = "canonical" %}
       {% endif %}
       <span class="repeat-unit ru-{{ cat }}"
-            title="{{ unit_type }}"
+            data-tip="#{{ loop.index }} {{ unit_type }} ({{ cat }})"
             aria-label="Repeat {{ loop.index }}: {{ unit_type }} ({{ cat }})"></span>
     {% endfor %}
   </div>
@@ -414,7 +484,7 @@ details summary:hover { text-decoration: underline; }
 {% endfor %}
 
 <section aria-label="Mutation report">
-  <h2>Mutation Report</h2>
+  <h2>Mutation Report <span class="help-icon tip tip-wide" data-tip="Frameshift mutations (insertions/deletions not divisible by 3) in repeat units. These cause ADTKD-MUC1 disease.">?</span></h2>
   {% set any_mutations = [] %}
   {% for akey in ["allele_1", "allele_2"] %}
     {% for m in classifications.get(akey, {}).get("mutations", []) %}
@@ -427,13 +497,13 @@ details summary:hover { text-decoration: underline; }
     <thead>
       <tr>
         <th>Allele</th>
-        <th>Repeat #</th>
-        <th>Parent type</th>
-        <th>Mutation</th>
-        <th>Frameshift</th>
-        <th>VCF support</th>
-        <th>QUAL</th>
-        <th>Boundary</th>
+        <th class="tip" data-tip="Position of the mutated repeat unit in the allele">Repeat #</th>
+        <th class="tip" data-tip="The canonical repeat type before mutation occurred">Parent type</th>
+        <th class="tip" data-tip="Name of the detected mutation (e.g. dupC = cytosine duplication)">Mutation</th>
+        <th class="tip" data-tip="Frameshift: indel length not divisible by 3, disrupts reading frame">Frameshift</th>
+        <th class="tip" data-tip="Whether Clair3 variant caller independently detected this mutation">VCF support</th>
+        <th class="tip" data-tip="Clair3 quality score: higher = more confident variant call">QUAL</th>
+        <th class="tip" data-tip="Mutations near allele boundaries may be alignment artifacts (0.5x penalty)">Boundary</th>
       </tr>
     </thead>
     <tbody>
@@ -480,7 +550,7 @@ details summary:hover { text-decoration: underline; }
      ════════════════════════════════════════════════════════ -->
 {% if detailed_repeats %}
 <section aria-label="Quality metrics">
-  <h2>Quality Metrics</h2>
+  <h2>Quality Metrics <span class="help-icon tip tip-wide" data-tip="Classification quality per allele. Green (>=80%) is good, yellow (>=50%) is moderate, red (<50%) needs review.">?</span></h2>
   <div class="card-grid">
     {% for allele_key in ["allele_1", "allele_2"] %}
     {% set dr = detailed_repeats.get(allele_key, {}) %}
@@ -491,7 +561,7 @@ details summary:hover { text-decoration: underline; }
 
       <div style="margin-bottom:0.75rem;">
         <div class="metric-row">
-          <span class="metric-label">Allele confidence</span>
+          <span class="metric-label tip" data-tip="Average classification confidence across all repeat units">Allele confidence</span>
           <span class="metric-value">{{ "%.1f"|format(conf * 100) if conf <= 1 else "%.1f"|format(conf) }}%</span>
         </div>
         <div class="progress-track" role="progressbar"
@@ -506,7 +576,7 @@ details summary:hover { text-decoration: underline; }
 
       <div>
         <div class="metric-row">
-          <span class="metric-label">Exact match</span>
+          <span class="metric-label tip" data-tip="Percentage of repeat units that exactly match a known reference sequence">Exact match</span>
           <span class="metric-value">{{ "%.1f"|format(exact * 100) if exact <= 1 else "%.1f"|format(exact) }}%</span>
         </div>
         <div class="progress-track" role="progressbar"
