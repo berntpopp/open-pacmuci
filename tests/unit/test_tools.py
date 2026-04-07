@@ -32,6 +32,42 @@ class TestRunTool:
             run_tool(["ls", "/nonexistent_path_xyz"])
 
 
+class TestRunToolPathSanitization:
+    """Tests for PATH sanitization in run_tool."""
+
+    def test_venv_bin_stripped_from_path(self):
+        """run_tool strips virtualenv bin dirs from PATH for subprocesses."""
+        from open_pacmuci.tools import _clean_path_for_externals
+
+        # Simulate a PATH with .venv/bin entries
+        fake_path = "/home/user/project/.venv/bin:/usr/local/bin:/usr/bin"
+        cleaned = _clean_path_for_externals(fake_path)
+        assert ".venv/bin" not in cleaned
+        assert "/usr/local/bin" in cleaned
+        assert "/usr/bin" in cleaned
+
+    def test_non_venv_paths_preserved(self):
+        """run_tool keeps conda and system paths intact."""
+        from open_pacmuci.tools import _clean_path_for_externals
+
+        fake_path = "/home/user/miniforge3/envs/env_clair3/bin:/usr/bin:/home/user/.venv/bin"
+        cleaned = _clean_path_for_externals(fake_path)
+        assert "env_clair3/bin" in cleaned
+        assert "/usr/bin" in cleaned
+        assert ".venv/bin" not in cleaned
+
+    def test_run_tool_uses_cleaned_path(self):
+        """run_tool subprocess does not see .venv/bin in PATH."""
+        import os
+
+        # Get the PATH that run_tool would pass to subprocess
+        result = run_tool(["printenv", "PATH"])
+        # If we're in a venv, the .venv/bin should NOT appear
+        venv_dir = os.environ.get("VIRTUAL_ENV", "")
+        if venv_dir:
+            assert f"{venv_dir}/bin" not in result
+
+
 class TestCheckTools:
     """Tests for the check_tools function."""
 
