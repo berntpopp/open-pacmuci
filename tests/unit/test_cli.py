@@ -26,7 +26,9 @@ class TestCli:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.4.0" in result.output
+        from open_pacmuci.version import __version__
+
+        assert __version__ in result.output
 
     def test_ladder_help(self):
         """ladder subcommand has help."""

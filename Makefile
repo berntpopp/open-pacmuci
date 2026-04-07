@@ -79,11 +79,11 @@ ci-check:  ## Run EXACT same checks as GitHub Actions CI
 	@echo "2. Ruff formatter check..."
 	uv run ruff format --check src/open_pacmuci/ tests/
 	@echo "3. Mypy type checker..."
-	uv run mypy src/open_pacmuci/ || true
+	uv run mypy src/open_pacmuci/
 	@echo ""
 	@echo "=== Test Suite ==="
-	@echo "4. Running pytest with coverage..."
-	uv run pytest --cov=open_pacmuci --cov-report=term-missing
+	@echo "4. Running pytest with coverage (>=80%)..."
+	uv run pytest tests/unit/ --cov=open_pacmuci --cov-report=term-missing --cov-fail-under=80
 	@echo ""
 	@echo "All CI checks passed!"
 

@@ -19,9 +19,9 @@ RUN micromamba install -y -n open-pacmuci-tools -c bioconda -c conda-forge clair
 
 # Install open-pacmuci Python package
 # Copy pyproject.toml first for layer caching (source changes don't bust dep cache)
+# Data is bundled inside src/open_pacmuci/data/ -- no separate data/ dir needed
 COPY --chown=$MAMBA_USER:$MAMBA_USER pyproject.toml README.md /app/
 COPY --chown=$MAMBA_USER:$MAMBA_USER src/ /app/src/
-COPY --chown=$MAMBA_USER:$MAMBA_USER data/ /app/data/
 
 WORKDIR /app
 RUN micromamba run -n open-pacmuci-tools pip install --no-cache-dir . && \
