@@ -11,6 +11,8 @@ import click
 
 from open_pacmuci.version import __version__
 
+PLATFORM_PRESETS: dict[str, str] = {"hifi": "map-hifi", "ont": "lr:hq"}
+
 
 @click.group()
 @click.version_option(version=__version__, prog_name="open-pacmuci")
@@ -20,7 +22,7 @@ from open_pacmuci.version import __version__
 @click.option("-q", "--quiet", is_flag=True, help="Suppress non-error output.")
 @click.pass_context
 def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
-    """open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data."""
+    """open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi and ONT amplicon data."""
     if quiet:
         level = logging.ERROR
     elif verbose >= 2:
@@ -87,11 +89,18 @@ def ladder(
 )
 @click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
+@click.option(
+    "--minimap2-preset",
+    type=str,
+    default=None,
+    help="minimap2 -x preset (default: map-hifi).",
+)
 def map_cmd(
     input_path: str,
     reference: str | None,
     output_dir: str,
     threads: int,
+    minimap2_preset: str | None,
 ) -> None:
     """Map reads to the ladder reference with minimap2."""
     from open_pacmuci.mapping import map_reads
@@ -99,8 +108,9 @@ def map_cmd(
 
     check_tools(["minimap2", "samtools"])
 
+    preset = minimap2_preset or "map-hifi"
     ref = Path(reference) if reference else _bundled_reference()
-    bam = map_reads(Path(input_path), ref, Path(output_dir), threads)
+    bam = map_reads(Path(input_path), ref, Path(output_dir), threads, preset=preset)
     click.echo(f"Mapping written to {bam}")
 
 
@@ -164,6 +174,18 @@ def alleles(input_path: str, min_coverage: int, output_dir: str) -> None:
     default=5.0,
     help="Minimum QUAL score for VCF filtering (default 5.0).",
 )
+@click.option(
+    "--platform",
+    type=click.Choice(["hifi", "ont"], case_sensitive=False),
+    default="hifi",
+    help="Sequencing platform (default: hifi).",
+)
+@click.option(
+    "--minimap2-preset",
+    type=str,
+    default=None,
+    help="minimap2 -x preset (auto-selected from --platform if not set).",
+)
 def call(
     input_path: str,
     reference: str,
@@ -172,6 +194,8 @@ def call(
     clair3_model: str,
     threads: int,
     min_qual: float,
+    platform: str,
+    minimap2_preset: str | None,
 ) -> None:
     """Call variants with Clair3."""
     from open_pacmuci.calling import call_variants_per_allele
@@ -184,6 +208,7 @@ def call(
     except (json.JSONDecodeError, ValueError) as exc:
         click.echo(f"Error: failed to parse alleles JSON: {exc}", err=True)
         sys.exit(1)
+    preset = minimap2_preset or PLATFORM_PRESETS[platform]
     vcfs = call_variants_per_allele(
         Path(input_path),
         Path(reference),
@@ -192,6 +217,8 @@ def call(
         clair3_model,
         threads,
         min_qual=min_qual,
+        platform=platform,
+        preset=preset,
     )
     for key, vcf in vcfs.items():
         click.echo(f"{key}: {vcf}")
@@ -343,6 +370,18 @@ def classify(
     default=False,
     help="Generate HTML report (requires jinja2: pip install open-pacmuci[report]).",
 )
+@click.option(
+    "--platform",
+    type=click.Choice(["hifi", "ont"], case_sensitive=False),
+    default="hifi",
+    help="Sequencing platform (default: hifi).",
+)
+@click.option(
+    "--minimap2-preset",
+    type=str,
+    default=None,
+    help="minimap2 -x preset (auto-selected from --platform if not set).",
+)
 def run(
     input_path: str,
     output_dir: str,
@@ -352,6 +391,8 @@ def run(
     min_coverage: int,
     min_qual: float,
     report: bool,
+    platform: str,
+    minimap2_preset: str | None,
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
@@ -363,6 +404,8 @@ def run(
     from open_pacmuci.tools import check_tools, get_tool_versions
     from open_pacmuci.vcf import parse_vcf_variants
 
+    preset = minimap2_preset or PLATFORM_PRESETS[platform]
+
     check_tools(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
     tool_versions = get_tool_versions(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
 
@@ -373,7 +416,7 @@ def run(
 
     # Step 1: Map reads
     click.echo("Step 1/5: Mapping reads...")
-    bam = map_reads(Path(input_path), ref, out, threads)
+    bam = map_reads(Path(input_path), ref, out, threads, preset=preset)
 
     # Step 2: Detect alleles
     click.echo("Step 2/5: Detecting alleles...")
@@ -393,6 +436,8 @@ def run(
         clair3_model,
         threads,
         min_qual=min_qual,
+        platform=platform,
+        preset=preset,
     )
 
     # Step 4: Build consensus
