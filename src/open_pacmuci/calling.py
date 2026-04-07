@@ -69,6 +69,7 @@ def _extract_and_remap_reads(
     reference_path: Path,
     output_dir: Path,
     threads: int = 4,
+    preset: str = "map-hifi",
 ) -> Path:
     """Extract reads from cluster contigs, convert to FASTQ, remap to peak contig.
 
@@ -85,6 +86,7 @@ def _extract_and_remap_reads(
         reference_path: Full ladder reference FASTA (for extracting the contig).
         output_dir: Working directory for intermediate files.
         threads: Thread count for minimap2/samtools.
+        preset: minimap2 preset (default ``"map-hifi"``). Use ``"lr:hq"`` for ONT.
 
     Returns:
         Path to the remapped, sorted, indexed BAM.
@@ -119,7 +121,7 @@ def _extract_and_remap_reads(
             "minimap2",
             "-a",
             "-x",
-            "map-hifi",
+            preset,
             "-t",
             str(threads),
             str(contig_ref),
@@ -203,6 +205,8 @@ def disambiguate_same_length_alleles(
     threads: int = 4,
     min_qual: float = 5.0,
     min_dp: int = 5,
+    platform: str = "hifi",
+    preset: str = "map-hifi",
 ) -> dict:
     """Disambiguate same-length alleles using Clair3 genotype calls.
 
@@ -226,6 +230,7 @@ def disambiguate_same_length_alleles(
         reference_path,
         merged_dir,
         threads,
+        preset=preset,
     )
 
     # Run Clair3
@@ -236,6 +241,7 @@ def disambiguate_same_length_alleles(
         contig_ref,
         clair3_dir,
         model_path=clair3_model,
+        platform=platform,
         threads=threads,
     )
     filtered_vcf = filter_vcf(raw_vcf, contig_ref, merged_dir, min_qual=min_qual, min_dp=min_dp)
@@ -311,6 +317,8 @@ def call_variants_per_allele(
     threads: int = 4,
     min_qual: float = 5.0,
     min_dp: int = 5,
+    platform: str = "hifi",
+    preset: str = "map-hifi",
 ) -> dict[str, Path]:
     """Run variant calling for each detected allele.
 
@@ -334,6 +342,8 @@ def call_variants_per_allele(
             Low-confidence variants are retained but penalized in the
             confidence scoring system rather than hard-filtered.
         min_dp: Minimum INFO/DP for VCF filtering (default 5).
+        platform: Sequencing platform for Clair3 (default ``"hifi"``).
+        preset: minimap2 preset for remapping (default ``"map-hifi"``).
 
     Returns:
         Dictionary mapping allele key (``"allele_1"`` / ``"allele_2"``) to
@@ -350,6 +360,8 @@ def call_variants_per_allele(
             threads,
             min_qual,
             min_dp,
+            platform=platform,
+            preset=preset,
         )
         alleles["homozygous"] = disambig.pop("homozygous")
         return disambig
@@ -381,6 +393,7 @@ def call_variants_per_allele(
             reference_path,
             allele_dir,
             threads,
+            preset=preset,
         )
 
         # Run Clair3 against the single-contig reference (created during
@@ -395,6 +408,7 @@ def call_variants_per_allele(
             contig_ref,
             clair3_dir,
             model_path=clair3_model,
+            platform=platform,
             threads=per_allele_threads,
         )
 

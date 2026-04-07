@@ -133,6 +133,21 @@ class TestMapReads:
         map_reads(fastq, ref, tmp_path, threads=1)
         assert not (tmp_path / "mapping.sam").exists()
 
+    @patch("open_pacmuci.mapping._run_mapping_pipeline")
+    @patch("open_pacmuci.mapping.run_tool")
+    def test_preset_passed_to_pipeline(self, mock_run_tool, mock_pipeline, tmp_path):
+        """map_reads passes the preset parameter to _run_mapping_pipeline."""
+        mock_run_tool.return_value = ""
+        fastq = tmp_path / "reads.fq"
+        fastq.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        map_reads(fastq, ref, tmp_path, threads=2, preset="lr:hq")
+
+        pipeline_call = mock_pipeline.call_args
+        assert pipeline_call.kwargs["preset"] == "lr:hq"
+
 
 class TestGetIdxstats:
     """Tests for get_idxstats."""
@@ -296,3 +311,59 @@ class TestRunMappingPipeline:
         _run_mapping_pipeline(**self._make_pipeline_args())
 
         mock_p1.stdout.close.assert_called_once()
+
+    def test_preset_passed_to_minimap2(self, mocker):
+        """_run_mapping_pipeline passes the preset to minimap2 via -x."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.returncode = 0
+        mock_p1.stderr = mocker.MagicMock()
+        mock_p1.stderr.read.return_value = b""
+
+        mock_p2 = mocker.MagicMock()
+        mock_p2.returncode = 0
+        mock_p2.communicate.return_value = (b"", b"")
+
+        mock_popen = mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[mock_p1, mock_p2],
+        )
+
+        _run_mapping_pipeline(
+            input_path=Path("/tmp/test.fastq"),
+            reference_path=Path("/tmp/ref.fa"),
+            bam_path=Path("/tmp/out.bam"),
+            threads=1,
+            preset="lr:hq",
+        )
+
+        minimap2_cmd = mock_popen.call_args_list[0][0][0]
+        x_index = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_index + 1] == "lr:hq"
+
+    def test_preset_defaults_to_map_hifi(self, mocker):
+        """_run_mapping_pipeline defaults to map-hifi preset when not specified."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.returncode = 0
+        mock_p1.stderr = mocker.MagicMock()
+        mock_p1.stderr.read.return_value = b""
+
+        mock_p2 = mocker.MagicMock()
+        mock_p2.returncode = 0
+        mock_p2.communicate.return_value = (b"", b"")
+
+        mock_popen = mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[mock_p1, mock_p2],
+        )
+
+        _run_mapping_pipeline(**self._make_pipeline_args())
+
+        minimap2_cmd = mock_popen.call_args_list[0][0][0]
+        x_index = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_index + 1] == "map-hifi"

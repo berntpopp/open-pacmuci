@@ -607,6 +607,58 @@ class TestReportSubcommand:
         assert "test" in out.read_text()
 
 
+class TestPlatformOptions:
+    """Tests for --platform and --minimap2-preset CLI options."""
+
+    def test_run_help_shows_platform(self):
+        """run --help includes --platform option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--help"])
+        assert "--platform" in result.output
+
+    def test_run_help_shows_minimap2_preset(self):
+        """run --help includes --minimap2-preset option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--help"])
+        assert "--minimap2-preset" in result.output
+
+    def test_call_help_shows_platform(self):
+        """call --help includes --platform option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "--help"])
+        assert "--platform" in result.output
+
+    def test_call_help_shows_minimap2_preset(self):
+        """call --help includes --minimap2-preset option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["call", "--help"])
+        assert "--minimap2-preset" in result.output
+
+    def test_map_help_shows_minimap2_preset(self):
+        """map --help includes --minimap2-preset option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["map", "--help"])
+        assert "--minimap2-preset" in result.output
+
+    def test_map_help_shows_platform(self):
+        """map --help includes --platform option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["map", "--help"])
+        assert "--platform" in result.output
+
+    def test_run_rejects_invalid_platform(self):
+        """run --platform=invalid is rejected by Click."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--platform", "invalid", "--input", "/dev/null"])
+        assert result.exit_code != 0
+
+    def test_main_help_mentions_ont(self):
+        """Main --help mentions ONT support."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert "ONT" in result.output
+
+
 class TestConsensusSubcommand:
     """Tests for the consensus subcommand with mocked tools."""
 

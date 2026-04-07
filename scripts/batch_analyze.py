@@ -16,7 +16,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 SAMPLES_DIR = Path("tests/data/generated")
@@ -55,7 +54,7 @@ def parse_ground_truth(sample_dir: Path) -> dict:
     return {"mutation": mutation, "haplotypes": haplotypes}
 
 
-def run_pipeline(sample_dir: Path, output_dir: Path) -> dict | None:
+def run_pipeline(sample_dir: Path, output_dir: Path, platform: str = "hifi") -> dict | None:
     """Run open-pacmuci pipeline on a sample, return parsed results."""
     # Find reads BAM
     bams = sorted(sample_dir.glob("*_reads_amplicon_aligned.bam"))
@@ -85,6 +84,8 @@ def run_pipeline(sample_dir: Path, output_dir: Path) -> dict | None:
         "5.0",
         "--clair3-model",
         CLAIR3_MODEL,
+        "--platform",
+        platform,
     ]
 
     try:
@@ -187,8 +188,21 @@ def analyze_results(
 
 
 def main():
-    samples_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else SAMPLES_DIR
-    output_base = Path(sys.argv[2]) if len(sys.argv) > 2 else OUTPUT_DIR
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Batch analyze test samples")
+    parser.add_argument("samples_dir", nargs="?", default=str(SAMPLES_DIR))
+    parser.add_argument("output_dir", nargs="?", default=str(OUTPUT_DIR))
+    parser.add_argument(
+        "--platform",
+        default="hifi",
+        choices=["hifi", "ont"],
+        help="Sequencing platform (default: hifi)",
+    )
+    args = parser.parse_args()
+
+    samples_dir = Path(args.samples_dir)
+    output_base = Path(args.output_dir)
 
     # Get all sample directories that have reads
     sample_dirs = sorted(
@@ -210,7 +224,7 @@ def main():
         ground_truth = parse_ground_truth(sample_dir)
         out_dir = output_base / name
 
-        pipeline_result = run_pipeline(sample_dir, out_dir)
+        pipeline_result = run_pipeline(sample_dir, out_dir, platform=args.platform)
         analysis = analyze_results(name, ground_truth, pipeline_result)
         results.append(analysis)
 

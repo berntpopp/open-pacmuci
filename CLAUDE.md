@@ -135,7 +135,29 @@ export PATH="/home/bernt-popp/miniforge3/envs/env_clair3/bin:/home/bernt-popp/mi
 python scripts/batch_analyze.py
 ```
 
+For ONT samples, pass `--platform ont`:
+
+```bash
+python scripts/batch_analyze.py tests/data/generated_ont tests/results_ont --platform ont
+```
+
 Results are written to `tests/results/batch_results.json`. See `.planning/BENCHMARK_RESULTS.md` for detailed analysis.
+
+### ONT data support
+
+The pipeline supports ONT Q20+ reads via `--platform ont` on `run`, `map`, and `call` subcommands:
+
+```bash
+open-pacmuci run --input ont_reads.fastq --output-dir results/ --platform ont
+```
+
+This auto-selects:
+- minimap2 preset: `lr:hq` (requires minimap2 >= 2.26, our pin is 2.28)
+- Clair3 platform: `--platform=ont` (Clair3 selects its ONT model internally)
+
+The preset can be overridden explicitly with `--minimap2-preset`. The `PLATFORM_PRESETS` mapping in `cli.py` defines the auto-selection: `{"hifi": "map-hifi", "ont": "lr:hq"}`.
+
+ONT test data generation requires MucOneUp with `--platform ont` (uses pbsim3 ONT error model). See `.planning/TESTING_WITH_MUCONEUP.md` Test Set 5 for commands.
 
 **Known limitations:**
 - `sample_homozygous_60_60`: indel-valley splitting incorrectly splits same-length alleles

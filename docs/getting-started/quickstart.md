@@ -8,7 +8,7 @@ Get started with open-pacmuci in under 5 minutes. This tutorial walks through th
 
 - open-pacmuci installed ([Installation Guide](installation.md))
 - External tools on PATH: minimap2, samtools, bcftools, Clair3
-- PacBio HiFi CCS reads from a MUC1 VNTR PCR amplicon
+- PacBio HiFi CCS reads or Oxford Nanopore (ONT) Q20+ reads from a MUC1 VNTR PCR amplicon
 
 ---
 
@@ -91,9 +91,37 @@ open-pacmuci classify \
 
 ---
 
+## ONT Data
+
+To analyze Oxford Nanopore reads, add `--platform ont` to `run` or individual subcommands.
+The pipeline auto-selects `minimap2 -x lr:hq` and `Clair3 --platform=ont`:
+
+```bash
+open-pacmuci run \
+  --input ont_reads.fastq \
+  --output-dir results/ \
+  --platform ont \
+  --threads 8
+```
+
+For step-by-step execution, pass `--platform ont` to `map` and `call`:
+
+```bash
+open-pacmuci map --input ont_reads.fastq --reference ref.fa --output-dir results/ --platform ont
+open-pacmuci call --input results/mapping.bam --reference ref.fa --alleles-json results/alleles.json --output-dir results/ --platform ont
+```
+
+You can also override the minimap2 preset explicitly with `--minimap2-preset`:
+
+```bash
+open-pacmuci run --input reads.fastq --output-dir results/ --minimap2-preset map-ont
+```
+
+---
+
 ## Input Format
 
-- **PacBio HiFi CCS reads** as FASTQ or BAM
+- **PacBio HiFi CCS reads** or **ONT Q20+ reads** as FASTQ or BAM
 - Reads should be from a PCR amplicon spanning the MUC1 VNTR (primers per Wenzel et al. 2018)
 - Minimum recommended coverage: **10x per allele** (higher coverage improves confidence)
 
