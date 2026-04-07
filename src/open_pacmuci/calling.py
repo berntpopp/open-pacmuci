@@ -322,7 +322,7 @@ def disambiguate_same_length_alleles(
     output_dir: Path,
     clair3_model: str = "",
     threads: int = 4,
-    min_qual: float = 15.0,
+    min_qual: float = 5.0,
     min_dp: int = 5,
 ) -> dict:
     """Disambiguate same-length alleles using Clair3 genotype calls.
@@ -430,7 +430,7 @@ def call_variants_per_allele(
     output_dir: Path,
     clair3_model: str = "",
     threads: int = 4,
-    min_qual: float = 15.0,
+    min_qual: float = 5.0,
     min_dp: int = 5,
 ) -> dict[str, Path]:
     """Run variant calling for each detected allele.
@@ -451,7 +451,9 @@ def call_variants_per_allele(
         output_dir: Base output directory.
         clair3_model: Path to Clair3 model directory (optional).
         threads: Number of threads (default 4).
-        min_qual: Minimum QUAL score for VCF filtering (default 15.0).
+        min_qual: Minimum QUAL score for VCF filtering (default 5.0).
+            Low-confidence variants are retained but penalized in the
+            confidence scoring system rather than hard-filtered.
         min_dp: Minimum INFO/DP for VCF filtering (default 5).
 
     Returns:

@@ -28,6 +28,7 @@ src/open_pacmuci/data/reference/*.sa
 
 # Test outputs
 tests/output/
+tests/results/
 results/
 
 # OS
