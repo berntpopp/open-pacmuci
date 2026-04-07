@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-07
+
+### Added
+- TypedDict types for classification and allele results (documentation types)
+- Dedicated `vcf.py` module for VCF parsing and filtering
+- 18 new unit tests (mapping pipeline, CLI run, classify helpers, indel valley, VCF variants)
+- Pre-push checklist and common pitfalls in CLAUDE.md
+
+### Changed
+- Decompose `classify_sequence()` into 3 focused helpers
+- Raise CI coverage threshold from 70% to 80%
+- Strict `make ci-check` (no swallowed mypy errors, coverage gate)
+
+### Fixed
+- Docker build: remove nonexistent `data/` COPY
+- Dynamic version test (no more hardcoded version strings)
+- Expand `__all__` in `calling.py` to include all public functions
+
 ## [0.4.0] - 2026-04-07
 
 ### Added
@@ -72,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Project scaffolding with uv, ruff, mypy, pytest, CI
 - Initial pipeline implementation
 
-[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.1.2...v0.2.0
