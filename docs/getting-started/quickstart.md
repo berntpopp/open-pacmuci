@@ -19,7 +19,7 @@ Run all five stages in a single command:
 ```bash
 open-pacmuci run \
   --input reads.fastq \
-  --output results/ \
+  --output-dir results/ \
   --clair3-model /path/to/clair3/models/hifi \
   --threads 8
 ```

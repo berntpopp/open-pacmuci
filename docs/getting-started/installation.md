@@ -92,7 +92,7 @@ docker pull ghcr.io/berntpopp/open-pacmuci:latest
 docker run --rm \
   -v $(pwd)/data:/data \
   ghcr.io/berntpopp/open-pacmuci:latest \
-  run --input /data/reads.bam --output /data/results/
+  run --input /data/reads.bam --output-dir /data/results/
 ```
 
 ---
@@ -134,7 +134,7 @@ which minimap2 samtools bcftools run_clair3.sh
 # Run pipeline (requires all tools + Clair3 model)
 open-pacmuci run \
   --input reads.fastq \
-  --output results/ \
+  --output-dir results/ \
   --clair3-model /path/to/clair3/models/hifi
 ```
 

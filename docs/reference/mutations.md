@@ -28,11 +28,11 @@ open-pacmuci includes a catalog of **13 known MUC1 frameshift mutations** with p
 
 ### Step 1: Exact Match
 
-Each 60bp unit from the consensus sequence is compared against all known repeat type sequences (~50 types). If an exact match is found, the repeat is classified without mutation.
+Each 60bp unit from the consensus sequence is compared against all 34 known repeat type sequences. If an exact match is found, the repeat is classified without mutation.
 
 ### Step 2: Mutation Template Probing
 
-If no exact match, the unit is compared against **pre-computed mutation templates** (~650 templates = 13 mutations x ~50 repeat types). Each template is the exact sequence a repeat type would have after a specific mutation is applied.
+If no exact match, the unit is compared against **pre-computed mutation templates** (44 templates across 13 mutations, each applied only to its allowed repeat types). Each template is the exact sequence a repeat type would have after a specific mutation is applied.
 
 ```
 Example: X repeat (60bp) + dupC mutation = X:dupC template (61bp)

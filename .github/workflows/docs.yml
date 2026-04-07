@@ -49,6 +49,7 @@ jobs:
 
       - name: Build documentation
         run: |
+          set -o pipefail
           uv run mkdocs build --strict --verbose 2>&1 | tee build.log || (cat build.log && exit 1)
 
       - name: Upload artifact

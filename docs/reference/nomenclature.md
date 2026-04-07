@@ -16,7 +16,7 @@ Pre-repeats occur at the beginning of the VNTR array, before the variable-length
 | `2` | Pre-repeat 2 |
 | `3` | Pre-repeat 3 |
 | `4` | Pre-repeat 4 |
-| `4'` | Pre-repeat 4 variant (polymorphic) |
+| `4p` | Pre-repeat 4 variant (polymorphic) |
 | `5` | Pre-repeat 5 |
 | `5C` | Pre-repeat 5 variant |
 
@@ -27,11 +27,10 @@ The core VNTR consists of canonical repeat types that differ by 1-3 nucleotide s
 | Symbol | Description |
 |--------|-------------|
 | `X` | Canonical repeat (most common; consensus sequence) |
-| `A`-`Z` | Variant types differing by 1-3 substitutions from X |
-| `aA`-`aZ` | Extended variant types (additional polymorphisms) |
+| `A`, `B`, `C`, `D`, `E`, `F`, `G`, `H`, `I`, `J`, `K`, `L`, `M`, `N`, `O`, `P`, `Q`, `R`, `S`, `V`, `W` | Variant types differing by 1-3 substitutions from X (22 types total including X) |
 
 !!! note "X is the canonical repeat"
-    The **X repeat** is the most common type in the variable region. All other canonical repeat types (A, B, C, etc.) are defined by their specific nucleotide differences from X.
+    The **X repeat** is the most common type in the variable region. The 21 other canonical repeat types (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, V, W) are defined by their specific nucleotide differences from X. Note that T, U, Y, and Z are not used.
 
 ### After-Repeats (C-terminal)
 
@@ -40,7 +39,7 @@ After-repeats occur at the end of the VNTR array, following the variable-length 
 | Symbol | Description |
 |--------|-------------|
 | `6` | After-repeat 6 |
-| `6'` | After-repeat 6 variant (polymorphic) |
+| `6p` | After-repeat 6 variant (polymorphic) |
 | `7` | After-repeat 7 |
 | `8` | After-repeat 8 |
 | `9` | After-repeat 9 (final unit of the VNTR) |

@@ -51,7 +51,7 @@ Clair3 variant calls are cross-referenced against repeat classifications to adju
 ```bash
 open-pacmuci run \
   --input reads.fastq \
-  --output results/ \
+  --output-dir results/ \
   --clair3-model /path/to/clair3/models/hifi \
   --threads 8
 ```

@@ -36,16 +36,16 @@ python scripts/generate_testdata.py
 
 | Sample | Allele 1 | Allele 2 | Mutation | Purpose |
 |--------|----------|----------|----------|---------|
-| `sample_dupC_40_60` | 40 repeats | 60 repeats | dupC on allele 1 | Common mutation, well-separated alleles |
-| `sample_dupA_40_60` | 40 repeats | 60 repeats | dupA on allele 1 | Alternative single-base mutation |
-| `sample_insG_40_60` | 40 repeats | 60 repeats | insG on allele 1 | G insertion mutation |
-| `sample_insCCCC_40_60` | 40 repeats | 60 repeats | insCCCC on allele 1 | Multi-base insertion |
-| `sample_del18_31_40_60` | 40 repeats | 60 repeats | del18_31 on allele 1 | Large deletion |
-| `sample_normal_40_60` | 40 repeats | 60 repeats | None | Negative control |
-| `sample_homozygous_60_60` | 60 repeats | 60 repeats | dupC on allele 1 | Same-length alleles |
-| `sample_asymmetric_25_140` | 25 repeats | 140 repeats | dupC on allele 1 | Extreme length asymmetry |
-| `sample_short_25_30` | 25 repeats | 30 repeats | dupC on allele 1 | Very close alleles |
-| `sample_long_80_120` | 80 repeats | 120 repeats | dupC on allele 1 | Long alleles |
+| `sample_dupc_60_80` | 60 repeats | 80 repeats | dupC at repeat 25 | Common mutation, well-separated alleles |
+| `sample_dupa_60_80` | 60 repeats | 80 repeats | dupA at repeat 25 | Alternative single-base mutation |
+| `sample_insg_60_80` | 60 repeats | 80 repeats | insG at repeat 25 | G insertion mutation |
+| `sample_dupcccc_60_80` | 60 repeats | 80 repeats | insCCCC at repeat 25 | Multi-base insertion |
+| `sample_del_60_80` | 60 repeats | 80 repeats | del18_31 at repeat 25 | Large deletion |
+| `sample_normal_60_80` | 60 repeats | 80 repeats | None | Negative control |
+| `sample_homozygous_60_60` | 60 repeats | 60 repeats | dupC at repeat 25 | Same-length alleles |
+| `sample_asymmetric_25_140` | 25 repeats | 140 repeats | dupC at repeat 10 | Extreme length asymmetry |
+| `sample_short_25_30` | 25 repeats | 30 repeats | dupC at repeat 10 | Very close alleles |
+| `sample_long_120_140` | 120 repeats | 140 repeats | dupC at repeat 50 | Long alleles |
 
 All samples are generated at **200x template coverage** with realistic PCR length bias.
 
@@ -100,11 +100,15 @@ Use MucOneUp directly to create custom scenarios:
 ```bash
 # Generate a diploid haplotype with specific lengths and mutation
 muconeup --config config.json simulate \
-  --fixed-lengths 50 \
+  --out-base custom_test \
+  --out-dir my_output/ \
+  --num-haplotypes 2 \
+  --fixed-lengths 45 \
+  --fixed-lengths 65 \
   --mutation-name dupC \
-  --mutation-targets 1,25 \
+  --mutation-targets 1,20 \
   --output-structure \
-  --out-base custom_test
+  --seed 42
 
 # Simulate PacBio HiFi amplicon reads
 muconeup --config config.json reads amplicon \
@@ -115,7 +119,7 @@ muconeup --config config.json reads amplicon \
 # Run open-pacmuci on the simulated data
 open-pacmuci run \
   --input custom_reads.amplicon.bam \
-  --output custom_results/ \
+  --output-dir custom_results/ \
   --clair3-model /path/to/models/hifi
 
 # Compare to ground truth
