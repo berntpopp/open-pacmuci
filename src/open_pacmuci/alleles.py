@@ -333,6 +333,20 @@ def _build_allele_info(cluster: dict, best_contig: str | None = None) -> dict:
     canonical = cluster["center"]
     contig_name = best_contig if best_contig is not None else f"contig_{canonical}"
 
+    # When refine_peak_contig has identified a specific best contig,
+    # derive canonical_repeats from its name rather than the cluster
+    # center.  ONT reads produce wider distributions that can shift
+    # the weighted center by ±1 vs the AS-refined best contig.
+    # However, at longer allele lengths the AS metric itself can be
+    # unreliable for ONT (off by 2+), so only trust the refinement
+    # when it agrees with the cluster center within ±1.
+    if best_contig is not None:
+        match = re.search(r"_(\d+)$", best_contig)
+        if match:
+            refined_canonical = int(match.group(1))
+            if abs(refined_canonical - canonical) <= 1:
+                canonical = refined_canonical
+
     return {
         "length": canonical + PRE_AFTER_REPEAT_COUNT,
         "reads": cluster["total_reads"],

@@ -5,7 +5,7 @@
 [![Documentation](https://img.shields.io/badge/docs-MkDocs%20Material-blue)](https://berntpopp.github.io/open-pacmuci/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Open-source MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data.
+Open-source MUC1 VNTR analysis pipeline for PacBio HiFi and ONT amplicon data.
 
 ---
 
@@ -52,9 +52,26 @@ open-pacmuci --version
 
 ## Citation
 
-If you use open-pacmuci, please cite:
+If you use open-pacmuci, please cite the software and the original method:
+
+**Software:**
+
+```bibtex
+@software{popp_open_pacmuci_2026,
+  author       = {Popp, Bernt},
+  title        = {open-pacmuci: Open-source MUC1 VNTR analysis pipeline},
+  version      = {0.7.0},
+  year         = {2026},
+  url          = {https://github.com/berntpopp/open-pacmuci},
+  doi          = {},
+}
+```
+
+**Original method:**
 
 > Vrbacka A, Pristoupilova A, Kidd KO, et al. Long-Read Sequencing of the MUC1 VNTR. *bioRxiv.* 2025. doi: [10.1101/2025.09.06.673538](https://doi.org/10.1101/2025.09.06.673538)
+
+See [CITATION.cff](CITATION.cff) for machine-readable citation metadata.
 
 ---
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "open-pacmuci"
 dynamic = ["version"]
-description = "Open-source MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data"
+description = "Open-source MUC1 VNTR analysis pipeline for PacBio HiFi and ONT amplicon data"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

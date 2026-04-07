@@ -61,6 +61,13 @@ SAMPLES = [
     ("sample_dupc_60_80_cov50", 60, 80, "dupC", "1,25", 1022),
 ]
 
+# ONT samples use the same haplotypes but with ONT read simulation
+ONT_SAMPLES = [
+    ("sample_ont_dupc_60_80", 60, 80, "dupC", "1,25", 1001),
+    ("sample_ont_normal_60_80", 60, 80, "normal", "", 1006),
+    ("sample_ont_dupa_60_80", 60, 80, "dupA", "1,25", 1002),
+]
+
 COVERAGE = 200
 
 # Samples that use non-default coverage
@@ -151,6 +158,77 @@ def generate_sample(
     run(reads_cmd, f"Generating PacBio HiFi reads for {name} ({coverage}x)")
 
 
+def generate_ont_sample(
+    name: str,
+    hap1_length: int,
+    hap2_length: int,
+    mutation_name: str,
+    mutation_targets: str,
+    seed: int,
+    config_path: Path,
+    output_dir: Path,
+    coverage: int = COVERAGE,
+) -> None:
+    """Generate a single ONT test sample using MucOneUp."""
+    sample_dir = output_dir / name
+    sample_dir.mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Simulate haplotypes (same as PacBio)
+    sim_cmd = [
+        "muconeup",
+        "--config",
+        str(config_path),
+        "simulate",
+        "--out-base",
+        name,
+        "--out-dir",
+        str(sample_dir),
+        "--num-haplotypes",
+        "2",
+        "--fixed-lengths",
+        str(hap1_length),
+        "--fixed-lengths",
+        str(hap2_length),
+        "--output-structure",
+        "--seed",
+        str(seed),
+    ]
+
+    if mutation_name != "normal":
+        sim_cmd.extend(["--mutation-name", mutation_name])
+        if mutation_targets:
+            sim_cmd.extend(["--mutation-targets", mutation_targets])
+
+    run(sim_cmd, f"Simulating haplotypes for {name}")
+
+    # Step 2: Generate ONT amplicon reads
+    fastas = sorted(sample_dir.glob(f"{name}.*.simulated.fa"))
+    if not fastas:
+        print(f"  ERROR: No FASTA files found for {name}")
+        sys.exit(1)
+
+    reads_cmd = [
+        "muconeup",
+        "--config",
+        str(config_path),
+        "reads",
+        "amplicon",
+        *[str(f) for f in fastas],
+        "--out-dir",
+        str(sample_dir),
+        "--out-base",
+        f"{name}_reads",
+        "--coverage",
+        str(coverage),
+        "--seed",
+        str(seed),
+        "--platform",
+        "ont",
+    ]
+
+    run(reads_cmd, f"Generating ONT reads for {name} ({coverage}x)")
+
+
 def main() -> None:
     """Generate all test samples."""
     import os
@@ -183,7 +261,20 @@ def main() -> None:
         generate_sample(name, h1, h2, mut, targets, seed, config, OUTPUT_DIR, coverage=cov)
         print()
 
-    print(f"Done. {len(SAMPLES)} samples generated in {OUTPUT_DIR}")
+    print(f"Done. {len(SAMPLES)} PacBio samples generated in {OUTPUT_DIR}")
+
+    # ONT samples
+    print()
+    print(f"Generating {len(ONT_SAMPLES)} ONT test samples in {OUTPUT_DIR}")
+    print(f"Coverage: {COVERAGE}x ONT amplicon")
+    print()
+
+    for i, (name, h1, h2, mut, targets, seed) in enumerate(ONT_SAMPLES, start=1):
+        print(f"[{i}/{len(ONT_SAMPLES)}] {name} ({COVERAGE}x)")
+        generate_ont_sample(name, h1, h2, mut, targets, seed, config, OUTPUT_DIR)
+        print()
+
+    print(f"Done. {len(ONT_SAMPLES)} ONT samples generated in {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
