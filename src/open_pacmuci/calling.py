@@ -9,9 +9,13 @@ from open_pacmuci.tools import run_tool
 from open_pacmuci.vcf import filter_vcf, parse_vcf_genotypes, parse_vcf_variants
 
 __all__ = [
+    "call_variants_per_allele",
+    "disambiguate_same_length_alleles",
+    "extract_allele_reads",
     "filter_vcf",
     "parse_vcf_genotypes",
     "parse_vcf_variants",
+    "run_clair3",
 ]
 
 logger = logging.getLogger(__name__)
