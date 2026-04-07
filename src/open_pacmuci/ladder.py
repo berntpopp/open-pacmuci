@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from open_pacmuci.config import RepeatDictionary
+
+logger = logging.getLogger(__name__)
 
 
 def build_contig(
@@ -81,6 +84,12 @@ def generate_ladder_fasta(
         Path to the generated FASTA file.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        "Generating reference ladder (%d-%d repeats) -> %s",
+        min_units,
+        max_units,
+        output_path,
+    )
 
     with output_path.open("w") as f:
         for n in range(min_units, max_units + 1):

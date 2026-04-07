@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from open_pacmuci.mapping import bam_to_fastq, get_idxstats, map_reads
 
@@ -154,3 +157,28 @@ class TestGetIdxstats:
         bam = tmp_path / "mapping.bam"
 
         assert get_idxstats(bam) == raw
+
+
+def test_run_mapping_pipeline_stdout_none_raises(mocker):
+    """_run_mapping_pipeline raises RuntimeError if p1.stdout is None."""
+    from open_pacmuci.mapping import _run_mapping_pipeline
+
+    mock_p1 = mocker.MagicMock()
+    mock_p1.stdout = None
+    mock_p1.kill = mocker.MagicMock()
+    mock_p1.wait = mocker.MagicMock()
+
+    mocker.patch(
+        "open_pacmuci.mapping.subprocess.Popen",
+        side_effect=[mock_p1],
+    )
+
+    with pytest.raises(RuntimeError, match="minimap2 process stdout was not captured"):
+        _run_mapping_pipeline(
+            input_path=Path("/tmp/test.fastq"),
+            reference_path=Path("/tmp/ref.fa"),
+            bam_path=Path("/tmp/out.bam"),
+            threads=1,
+        )
+
+    mock_p1.kill.assert_called_once()

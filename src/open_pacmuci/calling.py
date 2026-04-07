@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
+
+logger = logging.getLogger(__name__)
 
 
 def extract_allele_reads(
@@ -157,6 +160,7 @@ def run_clair3(
         Path to the Clair3 output VCF (``merge_output.vcf.gz``).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Running Clair3 on %s", bam_path.name)
 
     cmd = [
         "run_clair3.sh",
@@ -461,6 +465,7 @@ def call_variants_per_allele(
         the filtered VCF path.
     """
     if alleles.get("same_length"):
+        logger.info("Same-length alleles detected, using disambiguation")
         disambig = disambiguate_same_length_alleles(
             bam_path,
             reference_path,

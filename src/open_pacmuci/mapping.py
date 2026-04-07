@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
+
+logger = logging.getLogger(__name__)
 
 
 def bam_to_fastq(bam_path: Path, output_dir: Path) -> Path:
@@ -51,6 +54,8 @@ def map_reads(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Mapping reads from %s to %s", input_path.name, reference_path.name)
+
     # If input is BAM, convert to FASTQ first
     actual_input = input_path
     if input_path.suffix.lower() == ".bam":
@@ -90,6 +95,7 @@ def _run_mapping_pipeline(
         FileNotFoundError: If minimap2 or samtools is not found.
         RuntimeError: If either process exits with non-zero status.
     """
+    logger.info("Starting minimap2 | samtools sort pipeline (%d threads)", threads)
     minimap2_cmd = [
         "minimap2",
         "-a",
@@ -118,6 +124,12 @@ def _run_mapping_pipeline(
     except FileNotFoundError as exc:
         raise FileNotFoundError("Tool not found: minimap2") from exc
 
+    # Verify stdout was captured before piping into samtools
+    if p1.stdout is None:
+        p1.kill()
+        p1.wait()
+        raise RuntimeError("minimap2 process stdout was not captured")
+
     try:
         p2 = subprocess.Popen(
             samtools_cmd,
@@ -131,17 +143,29 @@ def _run_mapping_pipeline(
         raise FileNotFoundError("Tool not found: samtools") from exc
 
     # Allow p1 to receive SIGPIPE if p2 exits early
-    assert p1.stdout is not None
     p1.stdout.close()
 
+    # Drain p1.stderr concurrently with p2.communicate() to avoid deadlock.
+    # If we read p1.stderr first, p2 could fill its stderr buffer and block;
+    # if we call p2.communicate() first, p1 could fill its stderr buffer.
+    import threading
+
+    p1_stderr_chunks: list[bytes] = []
+
+    def _drain_p1_stderr() -> None:
+        if p1.stderr:
+            p1_stderr_chunks.append(p1.stderr.read())
+
+    stderr_thread = threading.Thread(target=_drain_p1_stderr)
+    stderr_thread.start()
     _, p2_stderr = p2.communicate()
+    stderr_thread.join()
     p1.wait()
 
+    p1_stderr = p1_stderr_chunks[0].decode() if p1_stderr_chunks else ""
+
     if p1.returncode != 0:
-        raise RuntimeError(
-            f"minimap2 failed with exit code {p1.returncode}.\n"
-            f"stderr: {p1.stderr.read().decode() if p1.stderr else ''}"
-        )
+        raise RuntimeError(f"minimap2 failed with exit code {p1.returncode}.\nstderr: {p1_stderr}")
     if p2.returncode != 0:
         raise RuntimeError(
             f"samtools sort failed with exit code {p2.returncode}.\nstderr: {p2_stderr.decode()}"

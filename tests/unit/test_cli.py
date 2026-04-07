@@ -241,6 +241,40 @@ class TestClassifySubcommand:
         assert "Structure:" in result.output
 
 
+class TestVerboseQuietFlags:
+    """Tests for the --verbose / --quiet global flags."""
+
+    def test_verbose_flag_sets_info_level(self):
+        """-v sets logging to INFO level."""
+        import logging
+
+        runner = CliRunner()
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-v", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.INFO
+
+    def test_double_verbose_sets_debug_level(self):
+        """-vv sets logging to DEBUG level."""
+        import logging
+
+        runner = CliRunner()
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-vv", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.DEBUG
+
+    def test_quiet_flag_sets_error_level(self):
+        """-q sets logging to ERROR level."""
+        import logging
+
+        runner = CliRunner()
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-q", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.ERROR
+
+
 class TestMapSubcommand:
     """Tests for the map subcommand with mocked tools.
 

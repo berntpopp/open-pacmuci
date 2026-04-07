@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from open_pacmuci.tools import check_tools, run_tool
@@ -83,3 +85,19 @@ class TestCheckTools:
     def test_check_tools_empty_list(self):
         """check_tools with empty list returns True."""
         assert check_tools([]) is True
+
+
+def test_run_tool_logs_command(mocker, caplog):
+    """run_tool logs the command at DEBUG level."""
+    mocker.patch(
+        "open_pacmuci.tools.subprocess.run",
+        return_value=mocker.MagicMock(returncode=0, stdout="output"),
+    )
+    mocker.patch("open_pacmuci.tools.shutil.which", return_value="/usr/bin/echo")
+
+    with caplog.at_level(logging.DEBUG, logger="open_pacmuci.tools"):
+        from open_pacmuci.tools import run_tool
+
+        run_tool(["echo", "hello"])
+
+    assert any("echo hello" in record.message for record in caplog.records)

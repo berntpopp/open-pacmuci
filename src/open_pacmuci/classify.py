@@ -15,7 +15,11 @@ classify correctly.
 
 from __future__ import annotations
 
+import logging
+
 from open_pacmuci.config import RepeatDictionary
+
+logger = logging.getLogger(__name__)
 
 
 def edit_distance(s1: str, s2: str) -> int:
@@ -349,6 +353,7 @@ def classify_sequence(
     Returns:
         Dict with structure string, per-repeat details, and mutation report.
     """
+    logger.info("Classifying sequence of %d bp", len(sequence))
     unit_length = repeat_dict.repeat_length_bp
     # Maximum indel size to probe.  Covers all known MUC1 mutations
     # (largest known: 25bp insertion, 14bp deletion).
@@ -419,10 +424,11 @@ def classify_sequence(
             if remaining >= unit_length:
                 window = sequence[pos : pos + unit_length]
                 result = classify_repeat(window, repeat_dict)
-                dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
-                best_dist = dist
-                best_result = result
-                best_window_size = unit_length
+                if result is not None:
+                    dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
+                    best_dist = dist
+                    best_result = result
+                    best_window_size = unit_length
 
             if best_dist > 0:
                 for probe_size in range(
@@ -433,6 +439,8 @@ def classify_sequence(
                         continue
                     window = sequence[pos : pos + probe_size]
                     result = classify_repeat(window, repeat_dict)
+                    if result is None:
+                        continue
                     dist = 0 if result["match"] == "exact" else result.get("edit_distance", 999)
                     if dist < best_dist:
                         best_dist = dist
@@ -441,7 +449,11 @@ def classify_sequence(
                     if best_dist <= 1:
                         break
 
-        assert best_result is not None
+        if best_result is None:
+            raise RuntimeError(
+                f"Classification failed: no match found at position {pos} "
+                f"(remaining: {remaining} bp, repeat index: {repeat_index})"
+            )
         result = best_result
         advance = best_window_size
 
