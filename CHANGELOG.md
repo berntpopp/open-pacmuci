@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-07
+
+### Fixed
+- ONT allele length off-by-one: derive canonical repeat count from AS-refined contig instead of noisy cluster center, with ±1 guard to avoid regression on long alleles (#18)
+
+### Added
+- CITATION.cff for machine-readable citation metadata
+- ONT test data generation in `scripts/generate_testdata.py`
+- BibTeX citation block in README
+
+### Changed
+- Upgrade codecov/codecov-action v5 to v6 (fixes Node.js 20 deprecation)
+- Update project description to mention ONT support
+
 ## [0.7.0] - 2026-04-07
 
 ### Added
