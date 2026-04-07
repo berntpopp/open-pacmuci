@@ -476,13 +476,6 @@ details summary:hover { text-decoration: underline; }
 <!-- ════════════════════════════════════════════════════════
      4. MUTATION REPORT TABLE
      ════════════════════════════════════════════════════════ -->
-{% set has_mutations = false %}
-{% for akey in ["allele_1", "allele_2"] %}
-  {% if classifications.get(akey, {}).get("mutations", []) | length > 0 %}
-    {% set has_mutations = true %}
-  {% endif %}
-{% endfor %}
-
 <section aria-label="Mutation report">
   <h2>Mutation Report <span class="help-icon tip tip-wide" data-tip="Frameshift mutations (insertions/deletions not divisible by 3) in repeat units. These cause ADTKD-MUC1 disease.">?</span></h2>
   {% set any_mutations = [] %}

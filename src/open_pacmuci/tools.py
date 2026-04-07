@@ -126,12 +126,28 @@ def run_tool_iter(
         cwd=cwd,
     )
 
-    if proc.stdout is not None:
-        yield from proc.stdout
+    # Drain stderr in a background thread to prevent blocking if the
+    # subprocess writes enough to fill the stderr pipe buffer.
+    import threading
 
-    proc.wait()
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr:
+            stderr_chunks.append(proc.stderr.read())
+
+    stderr_thread = threading.Thread(target=_drain_stderr)
+    stderr_thread.start()
+
+    try:
+        if proc.stdout is not None:
+            yield from proc.stdout
+    finally:
+        stderr_thread.join()
+        proc.wait()
+
     if proc.returncode != 0:
-        stderr = proc.stderr.read() if proc.stderr else ""
+        stderr = stderr_chunks[0] if stderr_chunks else ""
         raise RuntimeError(
             f"Command failed: {' '.join(str(c) for c in cmd)}\n"
             f"Exit code: {proc.returncode}\nstderr: {stderr}"

@@ -486,12 +486,21 @@ def report(input_path: str, output: str, sample_name: str | None, repeats: str |
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1) from e
 
-    summary = json.loads(Path(input_path).read_text())
+    try:
+        summary = json.loads(Path(input_path).read_text())
+    except (json.JSONDecodeError, ValueError) as e:
+        click.echo(f"Error: Failed to parse JSON from {input_path}: {e}", err=True)
+        raise SystemExit(1) from e
+
     name = sample_name or Path(input_path).parent.name
 
     detailed = None
     if repeats:
-        detailed = json.loads(Path(repeats).read_text())
+        try:
+            detailed = json.loads(Path(repeats).read_text())
+        except (json.JSONDecodeError, ValueError) as e:
+            click.echo(f"Error: Failed to parse JSON from {repeats}: {e}", err=True)
+            raise SystemExit(1) from e
 
     out_path = generate_report(summary, Path(output), sample_name=name, detailed_repeats=detailed)
     click.echo(f"Report written to {out_path}")
