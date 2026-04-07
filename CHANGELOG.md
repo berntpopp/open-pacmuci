@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-07
+
+### Added
+- Structured logging in all pipeline modules with --verbose/-v and --quiet/-q CLI flags
+- Community health files: CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, CODEOWNERS, issue/PR templates
+- Multi-stage Docker build with micromamba slim base for smaller, faster, secure images
+- BuildKit layer caching in Docker CI workflow
+- Singularity/Apptainer definition for HPC environments
+- GitHub Release automation on version tags
+- Tool version recording in summary.json for reproducibility
+- Conda version pinning (minimap2=2.28, samtools=1.21, bcftools=1.21, htslib=1.21)
+- Validation script for repeat classification catalog
+- Known limitations documentation page
+
+### Fixed
+- Replace assert statements with descriptive RuntimeError in classify.py and mapping.py
+- Fix potential deadlock in mapping pipeline with concurrent stderr draining
+- Use ERROR level for --quiet flag (previously WARNING, same as default)
+
 ## [0.3.0] - 2026-04-07
 
 ### Added
@@ -53,7 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Project scaffolding with uv, ruff, mypy, pytest, CI
 - Initial pipeline implementation
 
-[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/berntpopp/open-pacmuci/compare/v0.1.1...v0.1.2
