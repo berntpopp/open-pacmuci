@@ -36,10 +36,11 @@ def map_reads(
     reference_path: Path,
     output_dir: Path,
     threads: int = 4,
+    preset: str = "map-hifi",
 ) -> Path:
     """Map reads to reference using minimap2 and sort/index with samtools.
 
-    Pipeline: ``minimap2 -a -x map-hifi`` → ``samtools sort`` →
+    Pipeline: ``minimap2 -a -x <preset>`` → ``samtools sort`` →
     ``samtools index``.  If *input_path* is a BAM file it is converted to
     FASTQ first with :func:`bam_to_fastq`.
 
@@ -48,6 +49,8 @@ def map_reads(
         reference_path: Path to reference FASTA.
         output_dir: Directory for output files.
         threads: Number of threads for minimap2/samtools (default 4).
+        preset: minimap2 preset passed via ``-x`` (default ``map-hifi``).
+            Use ``lr:hq`` for Oxford Nanopore Q20+ reads.
 
     Returns:
         Path to the sorted, indexed BAM file (``mapping.bam``).
@@ -66,7 +69,7 @@ def map_reads(
     # Pipe minimap2 SAM output directly to samtools sort to avoid
     # holding the full SAM in memory.  All arguments are controlled
     # internally (no user input), so a shell pipe is safe here.
-    _run_mapping_pipeline(actual_input, reference_path, bam_path, threads)
+    _run_mapping_pipeline(actual_input, reference_path, bam_path, threads, preset=preset)
 
     # samtools index
     run_tool(["samtools", "index", str(bam_path)])
@@ -79,6 +82,7 @@ def _run_mapping_pipeline(
     reference_path: Path,
     bam_path: Path,
     threads: int,
+    preset: str = "map-hifi",
 ) -> None:
     """Run minimap2 | samtools sort as a streaming pipeline.
 
@@ -90,6 +94,7 @@ def _run_mapping_pipeline(
         reference_path: Path to reference FASTA.
         bam_path: Path for sorted output BAM.
         threads: Number of threads for minimap2/samtools.
+        preset: minimap2 preset passed via ``-x`` (default ``map-hifi``).
 
     Raises:
         FileNotFoundError: If minimap2 or samtools is not found.
@@ -100,7 +105,7 @@ def _run_mapping_pipeline(
         "minimap2",
         "-a",
         "-x",
-        "map-hifi",
+        preset,
         "-t",
         str(threads),
         str(reference_path),
