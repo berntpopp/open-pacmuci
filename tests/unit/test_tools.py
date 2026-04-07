@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from open_pacmuci.tools import check_tools, run_tool
@@ -85,9 +87,6 @@ class TestCheckTools:
         assert check_tools([]) is True
 
 
-import logging
-
-
 def test_get_tool_versions_returns_versions(mocker):
     """get_tool_versions captures version strings from external tools."""
     mocker.patch(
@@ -123,6 +122,7 @@ def test_run_tool_logs_command(mocker, caplog):
 
     with caplog.at_level(logging.DEBUG, logger="open_pacmuci.tools"):
         from open_pacmuci.tools import run_tool
+
         run_tool(["echo", "hello"])
 
     assert any("echo hello" in record.message for record in caplog.records)

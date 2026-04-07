@@ -26,7 +26,7 @@ This installs the package in editable mode along with all development dependenci
 The pipeline depends on external bioinformatics tools. Use the provided conda environment:
 
 ```bash
-# Main pipeline tools (bwa, samtools, bcftools)
+# Main pipeline tools (minimap2, samtools, bcftools)
 conda env create -f conda/environment.yml
 
 # PacBio-specific tools (pbsim3 for test data generation)

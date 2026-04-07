@@ -145,10 +145,24 @@ def _run_mapping_pipeline(
     # Allow p1 to receive SIGPIPE if p2 exits early
     p1.stdout.close()
 
-    # Read stderr before wait() to avoid potential deadlock if stderr buffer fills
-    p1_stderr = p1.stderr.read().decode() if p1.stderr else ""
+    # Drain p1.stderr concurrently with p2.communicate() to avoid deadlock.
+    # If we read p1.stderr first, p2 could fill its stderr buffer and block;
+    # if we call p2.communicate() first, p1 could fill its stderr buffer.
+    import threading
+
+    p1_stderr_chunks: list[bytes] = []
+
+    def _drain_p1_stderr() -> None:
+        if p1.stderr:
+            p1_stderr_chunks.append(p1.stderr.read())
+
+    stderr_thread = threading.Thread(target=_drain_p1_stderr)
+    stderr_thread.start()
     _, p2_stderr = p2.communicate()
+    stderr_thread.join()
     p1.wait()
+
+    p1_stderr = p1_stderr_chunks[0].decode() if p1_stderr_chunks else ""
 
     if p1.returncode != 0:
         raise RuntimeError(f"minimap2 failed with exit code {p1.returncode}.\nstderr: {p1_stderr}")
