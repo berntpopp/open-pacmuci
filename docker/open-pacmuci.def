@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: ghcr.io/berntpopp/open-pacmuci:latest
+
+%labels
+    Author Bernt Popp
+    Version 0.3.0
+    Description open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data
+
+%help
+    open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data.
+
+    Usage:
+        singularity run open-pacmuci.sif --help
+        singularity run open-pacmuci.sif run --input reads.bam --output-dir results/
+
+    Build:
+        singularity build open-pacmuci.sif docker/open-pacmuci.def
+
+%runscript
+    exec open-pacmuci "$@"
