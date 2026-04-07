@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_path_for_externals(path_str: str) -> str:
@@ -65,6 +68,8 @@ def run_tool(cmd: list[str], cwd: str | None = None) -> str:
     env = os.environ.copy()
     env["PATH"] = _clean_path_for_externals(env.get("PATH", ""))
 
+    logger.debug("Running: %s", " ".join(str(c) for c in cmd))
+
     try:
         result = subprocess.run(
             cmd,
@@ -104,4 +109,5 @@ def check_tools(tools: list[str]) -> bool:
             f"Required tools not found: {', '.join(missing)}. "
             f"Install them or activate the conda environment."
         )
+    logger.info("All required tools found: %s", ", ".join(tools))
     return True
