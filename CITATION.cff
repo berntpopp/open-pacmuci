@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "open-pacmuci"
+abstract: "Open-source MUC1 VNTR analysis pipeline for PacBio HiFi and ONT amplicon data"
+authors:
+  - family-names: "Popp"
+    given-names: "Bernt"
+    orcid: "https://orcid.org/0000-0002-3679-1081"
+repository-code: "https://github.com/berntpopp/open-pacmuci"
+url: "https://berntpopp.github.io/open-pacmuci/"
+license: MIT
+version: "0.7.0"
+date-released: "2026-04-07"
+keywords:
+  - MUC1
+  - VNTR
+  - bioinformatics
+  - PacBio
+  - ONT
+  - long-read sequencing
+  - ADTKD-MUC1
+references:
+  - type: article
+    authors:
+      - family-names: "Vrbacka"
+        given-names: "A"
+      - family-names: "Pristoupilova"
+        given-names: "A"
+      - family-names: "Kidd"
+        given-names: "KO"
+    title: "Long-Read Sequencing of the MUC1 VNTR"
+    journal: "bioRxiv"
+    year: 2025
+    doi: "10.1101/2025.09.06.673538"
