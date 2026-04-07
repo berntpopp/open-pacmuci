@@ -203,6 +203,96 @@ def _find_clusters(
     return result
 
 
+def _split_cluster_by_indel(
+    bam_path: Path,
+    cluster: dict,
+) -> list[dict] | None:
+    """Attempt to split a single cluster into two alleles using indel valleys.
+
+    Reads from a short allele mapped to a long contig (or vice versa)
+    accumulate large indels in CIGAR.  Reads mapped to the correct-length
+    contig have near-zero indels.  By finding the two local minima in
+    per-contig mean indel length, we can resolve close alleles that
+    gap-based clustering merges into one cluster.
+
+    Returns two sub-clusters if a clear split is found, or None if the
+    cluster is genuinely homozygous (single indel valley).
+    """
+    contig_names = [f"contig_{c}" for c, _ in cluster["contigs"]]
+    sam_output = run_tool(["samtools", "view", str(bam_path), *contig_names])
+
+    # Compute per-contig mean indel bp
+    contig_stats: dict[int, dict] = {}
+    for c, _ in cluster["contigs"]:
+        contig_stats[c] = {"indel_sum": 0, "count": 0}
+
+    for line in sam_output.strip().splitlines():
+        if not line or line.startswith("@"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 6:
+            continue
+        contig_name = fields[2]
+        m = re.search(r"_(\d+)$", contig_name)
+        if not m:
+            continue
+        c = int(m.group(1))
+        if c not in contig_stats:
+            continue
+        contig_stats[c]["indel_sum"] += _parse_cigar_indel_bp(fields[5])
+        contig_stats[c]["count"] += 1
+
+    # Build mean-indel series (only contigs with reads)
+    indel_series: list[tuple[int, float]] = []
+    for c in sorted(contig_stats):
+        n = contig_stats[c]["count"]
+        if n == 0:
+            continue
+        indel_series.append((c, contig_stats[c]["indel_sum"] / n))
+
+    if len(indel_series) < 3:
+        return None
+
+    # Find local minima (valleys) in mean indel
+    valleys: list[tuple[int, float]] = []
+    for i in range(len(indel_series)):
+        c, val = indel_series[i]
+        left = indel_series[i - 1][1] if i > 0 else float("inf")
+        right = indel_series[i + 1][1] if i < len(indel_series) - 1 else float("inf")
+        if val <= left and val <= right:
+            valleys.append((c, val))
+
+    if len(valleys) < 2:
+        return None
+
+    # Take the two deepest valleys (lowest mean indel)
+    valleys.sort(key=lambda x: x[1])
+    best_two = sorted(valleys[:2], key=lambda x: x[0])
+    v1, v2 = best_two[0][0], best_two[1][0]
+
+    # The split point is the midpoint between the two valleys
+    split = (v1 + v2) // 2
+
+    # Verify the valleys are meaningfully separated (at least 3 contigs apart)
+    if abs(v2 - v1) < 3:
+        return None
+
+    # Split cluster contigs into two sub-clusters
+    contigs_dict = dict(cluster["contigs"])
+    sub1 = [(c, contigs_dict[c]) for c in sorted(contigs_dict) if c <= split]
+    sub2 = [(c, contigs_dict[c]) for c in sorted(contigs_dict) if c > split]
+
+    if not sub1 or not sub2:
+        return None
+
+    def _make_sub_cluster(contigs: list[tuple[int, int]]) -> dict:
+        total = sum(r for _, r in contigs)
+        center = sum(c * r for c, r in contigs) / total
+        return {"center": round(center), "total_reads": total, "contigs": contigs}
+
+    return [_make_sub_cluster(sub1), _make_sub_cluster(sub2)]
+
+
 def _build_allele_info(cluster: dict, best_contig: str | None = None) -> dict:
     """Build allele info dict from a cluster.
 
@@ -278,6 +368,13 @@ def detect_alleles(
         refined = refine_peak_contig(bam_path, contig_names)
         best: str = refined["best_contig"]
         return best
+
+    # If only one cluster found but BAM is available, try indel-valley splitting
+    if len(clusters) == 1 and bam_path is not None:
+        sub_clusters = _split_cluster_by_indel(bam_path, clusters[0])
+        if sub_clusters is not None:
+            clusters = sub_clusters
+            clusters.sort(key=lambda x: x["total_reads"], reverse=True)
 
     allele_1 = _build_allele_info(clusters[0], _get_best_contig(clusters[0]))
 
