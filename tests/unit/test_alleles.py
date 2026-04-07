@@ -325,6 +325,35 @@ class TestBuildAlleleInfo:
         info = _build_allele_info(cluster)
         assert info["cluster_contigs"] == ["contig_50", "contig_51", "contig_52"]
 
+    def test_canonical_from_best_contig_overrides_center(self):
+        """When best_contig differs from cluster center, canonical_repeats follows best_contig.
+
+        ONT reads produce a wider distribution that can shift the weighted
+        center by 1 vs the alignment-score-refined best contig.  The
+        canonical_repeats (and therefore allele length) must come from the
+        refined contig, not the noisy cluster center.
+        """
+        # Simulate an ONT-like cluster: center rounds to 52, but
+        # refine_peak_contig correctly identified contig_51.
+        cluster = self._cluster(
+            52,  # weighted center rounds to 52 due to rightward skew
+            1880,
+            contigs=[
+                (48, 35),
+                (49, 275),
+                (50, 310),
+                (51, 313),
+                (52, 317),
+                (53, 317),
+                (54, 279),
+                (55, 34),
+            ],
+        )
+        info = _build_allele_info(cluster, best_contig="contig_51")
+        assert info["contig_name"] == "contig_51"
+        assert info["canonical_repeats"] == 51  # from best_contig, not center
+        assert info["length"] == 51 + PRE_AFTER_REPEAT_COUNT  # 60, not 61
+
 
 class TestSameLengthDetection:
     """Tests for same_length allele detection."""
