@@ -21,10 +21,13 @@ length is reported alongside for transparency.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
+
+logger = logging.getLogger(__name__)
 
 # Number of fixed repeat units in the ladder reference (pre-repeats 1-5 + after-repeats 6-9).
 # Each contig_N has N canonical X repeats plus these fixed repeats,
@@ -143,6 +146,7 @@ def refine_peak_contig(
             best_as = mean_as
             best_contig = contig
 
+    logger.debug("Refined peak contig: %s (AS=%.1f)", best_contig, best_as)
     return {"best_contig": best_contig, "metrics": metrics}
 
 
@@ -262,6 +266,7 @@ def _split_cluster_by_indel(
         if val <= left and val <= right:
             valleys.append((c, val))
 
+    logger.debug("Indel valley splitting: found %d valleys", len(valleys))
     if len(valleys) < 2:
         return None
 
@@ -352,6 +357,7 @@ def detect_alleles(
     int_counts = {k: v for k, v in counts.items() if isinstance(k, int)}
 
     clusters = _find_clusters(int_counts, min_coverage)
+    logger.info("Detected %d peak(s) from %d contigs", len(clusters), len(int_counts))
 
     if not clusters:
         max_observed = max(int_counts.values()) if int_counts else 0

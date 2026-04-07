@@ -15,7 +15,11 @@ classify correctly.
 
 from __future__ import annotations
 
+import logging
+
 from open_pacmuci.config import RepeatDictionary
+
+logger = logging.getLogger(__name__)
 
 
 def edit_distance(s1: str, s2: str) -> int:
@@ -349,6 +353,7 @@ def classify_sequence(
     Returns:
         Dict with structure string, per-repeat details, and mutation report.
     """
+    logger.info("Classifying sequence of %d bp", len(sequence))
     unit_length = repeat_dict.repeat_length_bp
     # Maximum indel size to probe.  Covers all known MUC1 mutations
     # (largest known: 25bp insertion, 14bp deletion).

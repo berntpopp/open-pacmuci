@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
+
+logger = logging.getLogger(__name__)
 
 
 def bam_to_fastq(bam_path: Path, output_dir: Path) -> Path:
@@ -51,6 +54,8 @@ def map_reads(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger.info("Mapping reads from %s to %s", input_path.name, reference_path.name)
+
     # If input is BAM, convert to FASTQ first
     actual_input = input_path
     if input_path.suffix.lower() == ".bam":
@@ -90,6 +95,7 @@ def _run_mapping_pipeline(
         FileNotFoundError: If minimap2 or samtools is not found.
         RuntimeError: If either process exits with non-zero status.
     """
+    logger.info("Starting minimap2 | samtools sort pipeline (%d threads)", threads)
     minimap2_cmd = [
         "minimap2",
         "-a",
