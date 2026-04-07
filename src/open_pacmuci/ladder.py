@@ -85,7 +85,7 @@ def generate_ladder_fasta(
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info(
-        "Generating reference ladder (%d–%d repeats) -> %s",
+        "Generating reference ladder (%d-%d repeats) -> %s",
         min_units,
         max_units,
         output_path,
