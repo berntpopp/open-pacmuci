@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -20,10 +21,8 @@ from open_pacmuci.version import __version__
 @click.pass_context
 def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
     """open-pacmuci: MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data."""
-    import logging
-
     if quiet:
-        level = logging.WARNING
+        level = logging.ERROR
     elif verbose >= 2:
         level = logging.DEBUG
     elif verbose == 1:

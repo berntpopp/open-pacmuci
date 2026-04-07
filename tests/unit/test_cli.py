@@ -245,22 +245,34 @@ class TestVerboseQuietFlags:
     """Tests for the --verbose / --quiet global flags."""
 
     def test_verbose_flag_sets_info_level(self):
-        """-v flag is accepted without error."""
+        """-v sets logging to INFO level."""
+        import logging
+
         runner = CliRunner()
-        result = runner.invoke(main, ["-v", "--version"])
-        assert result.exit_code == 0
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-v", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.INFO
 
     def test_double_verbose_sets_debug_level(self):
-        """-vv flag is accepted without error."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["-vv", "--version"])
-        assert result.exit_code == 0
+        """-vv sets logging to DEBUG level."""
+        import logging
 
-    def test_quiet_flag_accepted(self):
-        """-q flag is accepted without error."""
         runner = CliRunner()
-        result = runner.invoke(main, ["-q", "--version"])
-        assert result.exit_code == 0
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-vv", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.DEBUG
+
+    def test_quiet_flag_sets_error_level(self):
+        """-q sets logging to ERROR level."""
+        import logging
+
+        runner = CliRunner()
+        with patch("logging.basicConfig") as mock_basic:
+            runner.invoke(main, ["-q", "ladder", "--help"])
+            mock_basic.assert_called_once()
+            assert mock_basic.call_args[1]["level"] == logging.ERROR
 
 
 class TestMapSubcommand:
