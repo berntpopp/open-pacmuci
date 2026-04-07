@@ -38,12 +38,18 @@ dev = [
     "mypy>=1.8.0",
     "types-PyYAML>=6.0",
 ]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-click>=0.8.0",
+]
 
 [project.scripts]
 open-pacmuci = "open_pacmuci.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/berntpopp/open-pacmuci"
+Documentation = "https://berntpopp.github.io/open-pacmuci/"
 Repository = "https://github.com/berntpopp/open-pacmuci"
 Issues = "https://github.com/berntpopp/open-pacmuci/issues"
 
