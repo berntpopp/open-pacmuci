@@ -6,6 +6,9 @@ from __future__ import annotations
 import pytest
 
 from open_pacmuci.classify import (
+    _apply_bidirectional_fallback,
+    _compute_classification_summary,
+    _forward_classify,
     _qual_to_confidence,
     characterize_differences,
     classify_repeat,
@@ -526,3 +529,86 @@ def test_classify_sequence_raises_on_no_match(mocker):
 
     with pytest.raises(RuntimeError, match="Classification failed"):
         classify_sequence(sequence, rd)
+
+
+class TestForwardClassify:
+    """Tests for the _forward_classify helper."""
+
+    def test_single_exact_repeat(self, repeat_dict):
+        """Single known repeat classifies with exact match, 0 mutations, offset=0."""
+        x_seq = repeat_dict.repeats["X"]
+        unit_length = repeat_dict.repeat_length_bp
+        repeats, mutations, labels, pos, cumulative_offset = _forward_classify(
+            x_seq, repeat_dict, unit_length, max_indel_probe=30
+        )
+        assert len(repeats) == 1
+        assert repeats[0]["match"] == "exact"
+        assert repeats[0]["type"] == "X"
+        assert len(mutations) == 0
+        assert cumulative_offset == 0
+
+    def test_two_exact_repeats(self, repeat_dict):
+        """Two concatenated known repeats both classify correctly."""
+        x_seq = repeat_dict.repeats["X"]
+        a_seq = repeat_dict.repeats.get("A", x_seq)  # fall back to X if A absent
+        sequence = x_seq + a_seq
+        unit_length = repeat_dict.repeat_length_bp
+        repeats, mutations, labels, pos, cumulative_offset = _forward_classify(
+            sequence, repeat_dict, unit_length, max_indel_probe=30
+        )
+        assert len(repeats) == 2
+        assert all(r["match"] == "exact" for r in repeats)
+        assert len(mutations) == 0
+        assert cumulative_offset == 0
+
+
+class TestApplyBidirectionalFallback:
+    """Tests for the _apply_bidirectional_fallback helper."""
+
+    def test_no_fallback_when_fully_consumed(self, repeat_dict):
+        """When forward_pos >= len(sequence) - unit_length//2, no extra repeats added."""
+        x_seq = repeat_dict.repeats["X"]
+        unit_length = repeat_dict.repeat_length_bp
+        sequence = x_seq * 3
+
+        # Simulate a forward pass that consumed the entire sequence.
+        repeats, mutations, labels, forward_pos, _ = _forward_classify(
+            sequence, repeat_dict, unit_length, max_indel_probe=30
+        )
+        initial_count = len(repeats)
+
+        # forward_pos should already be at or past the threshold
+        result_repeats, result_mutations, result_labels = _apply_bidirectional_fallback(
+            sequence, repeat_dict, repeats, mutations, labels, forward_pos
+        )
+        # No additional repeats should have been appended
+        assert len(result_repeats) == initial_count
+
+
+class TestComputeClassificationSummary:
+    """Tests for the _compute_classification_summary helper."""
+
+    def test_empty_repeats(self):
+        """Empty inputs produce empty structure, confidence=0.0, exact_match_pct=0.0."""
+        result = _compute_classification_summary(
+            repeats=[], mutations=[], labels=[], cumulative_offset=0
+        )
+        assert result["structure"] == ""
+        assert result["allele_confidence"] == 0.0
+        assert result["exact_match_pct"] == 0.0
+        assert result["repeats"] == []
+        assert result["mutations_detected"] == []
+
+    def test_all_exact_matches(self, repeat_dict):
+        """Two exact-match repeats produce confidence=1.0, exact_match_pct=100.0."""
+        x_seq = repeat_dict.repeats["X"]
+        unit_length = repeat_dict.repeat_length_bp
+        sequence = x_seq * 2
+        repeats, mutations, labels, _, cumulative_offset = _forward_classify(
+            sequence, repeat_dict, unit_length, max_indel_probe=30
+        )
+        result = _compute_classification_summary(repeats, mutations, labels, cumulative_offset)
+        assert result["allele_confidence"] == 1.0
+        assert result["exact_match_pct"] == 100.0
+        # Structure should be two space-separated labels
+        assert result["structure"] == "X X"
