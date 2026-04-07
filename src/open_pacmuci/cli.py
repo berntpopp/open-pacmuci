@@ -208,7 +208,7 @@ def call(
     from open_pacmuci.calling import call_variants_per_allele
     from open_pacmuci.tools import check_tools
 
-    check_tools(["samtools", "bcftools", "run_clair3.sh"])
+    check_tools(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
 
     try:
         alleles_data = json.loads(Path(alleles_json).read_text())

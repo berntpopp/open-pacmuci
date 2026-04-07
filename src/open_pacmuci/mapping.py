@@ -67,8 +67,8 @@ def map_reads(
     bam_path = output_dir / "mapping.bam"
 
     # Pipe minimap2 SAM output directly to samtools sort to avoid
-    # holding the full SAM in memory.  All arguments are controlled
-    # internally (no user input), so a shell pipe is safe here.
+    # holding the full SAM in memory. The pipeline implementation uses
+    # subprocesses with argument lists (no shell invocation).
     _run_mapping_pipeline(actual_input, reference_path, bam_path, threads, preset=preset)
 
     # samtools index
