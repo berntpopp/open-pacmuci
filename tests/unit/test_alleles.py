@@ -354,6 +354,34 @@ class TestBuildAlleleInfo:
         assert info["canonical_repeats"] == 51  # from best_contig, not center
         assert info["length"] == 51 + PRE_AFTER_REPEAT_COUNT  # 60, not 61
 
+    def test_best_contig_far_from_center_falls_back(self):
+        """When AS-refined contig differs from center by >1, fall back to center.
+
+        For long ONT alleles (>80 repeats), the AS metric can peak at a
+        contig 2+ positions away from the true length.  In that case the
+        cluster center (off by at most 1) is more reliable.
+        """
+        # ONT 80/100 case: center=72 (true=71), AS picks contig_69 (off by -2)
+        cluster = self._cluster(
+            72,
+            1794,
+            contigs=[
+                (68, 19),
+                (69, 235),
+                (70, 283),
+                (71, 303),
+                (72, 309),
+                (73, 309),
+                (74, 283),
+                (75, 53),
+            ],
+        )
+        info = _build_allele_info(cluster, best_contig="contig_69")
+        assert info["contig_name"] == "contig_69"
+        # canonical_repeats should fall back to center (72), not use 69
+        assert info["canonical_repeats"] == 72
+        assert info["length"] == 72 + PRE_AFTER_REPEAT_COUNT
+
 
 class TestSameLengthDetection:
     """Tests for same_length allele detection."""
