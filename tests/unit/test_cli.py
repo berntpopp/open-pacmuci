@@ -491,13 +491,25 @@ class TestRunSubcommand:
 class TestReportSubcommand:
     def test_report_from_summary_json(self, tmp_path):
         import json
+
         summary = {
             "alleles": {
-                "allele_1": {"length": 50, "reads": 100, "canonical_repeats": 41,
-                             "contig_name": "c41", "cluster_contigs": ["c41"]},
-                "allele_2": {"length": 60, "reads": 80, "canonical_repeats": 51,
-                             "contig_name": "c51", "cluster_contigs": ["c51"]},
-                "homozygous": False, "same_length": False,
+                "allele_1": {
+                    "length": 50,
+                    "reads": 100,
+                    "canonical_repeats": 41,
+                    "contig_name": "c41",
+                    "cluster_contigs": ["c41"],
+                },
+                "allele_2": {
+                    "length": 60,
+                    "reads": 80,
+                    "canonical_repeats": 51,
+                    "contig_name": "c51",
+                    "cluster_contigs": ["c51"],
+                },
+                "homozygous": False,
+                "same_length": False,
             },
             "classifications": {
                 "allele_1": {"structure": "1 2 3 X 6 7 8 9", "mutations": []},
@@ -510,7 +522,8 @@ class TestReportSubcommand:
 
         runner = CliRunner()
         result = runner.invoke(
-            main, ["report", "--input", str(summary_path), "--output", str(out), "--sample-name", "test"],
+            main,
+            ["report", "--input", str(summary_path), "--output", str(out), "--sample-name", "test"],
         )
         assert result.exit_code == 0, result.output
         assert out.exists()

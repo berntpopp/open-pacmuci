@@ -460,12 +460,22 @@ def run(
 
 
 @main.command()
-@click.option("--input", "-i", "input_path", required=True,
-              type=click.Path(exists=True), help="Path to summary.json from a previous run.")
+@click.option(
+    "--input",
+    "-i",
+    "input_path",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to summary.json from a previous run.",
+)
 @click.option("--output", "-o", type=click.Path(), default="report.html", help="Output HTML path.")
 @click.option("--sample-name", "-s", default=None, help="Sample name for report header.")
-@click.option("--repeats", type=click.Path(exists=True), default=None,
-              help="Path to repeats.json for detailed repeat table.")
+@click.option(
+    "--repeats",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to repeats.json for detailed repeat table.",
+)
 def report(input_path: str, output: str, sample_name: str | None, repeats: str | None) -> None:
     """Generate an HTML report from pipeline results."""
     import json
