@@ -149,16 +149,16 @@ class TestAllelesSubcommand:
 
     def test_alleles_writes_json(self, tmp_path):
         """alleles subcommand writes alleles.json to the output directory."""
-        # Mock both mapping.run_tool (for idxstats) and alleles.run_tool
+        # Mock both mapping.run_tool (for idxstats) and alleles.run_tool_iter
         # (for refine_peak_contig's samtools view call)
         with (
             patch("open_pacmuci.mapping.run_tool") as mock_mapping_run,
-            patch("open_pacmuci.alleles.run_tool") as mock_alleles_run,
+            patch("open_pacmuci.alleles.run_tool_iter") as mock_alleles_run,
         ):
             mock_mapping_run.return_value = (
                 "contig_60\t4120\t200\t0\ncontig_80\t5320\t150\t0\n*\t0\t0\t50\n"
             )
-            mock_alleles_run.return_value = ""
+            mock_alleles_run.return_value = iter([])
             runner = CliRunner()
             bam = tmp_path / "mapping.bam"
             bam.touch()
@@ -188,10 +188,10 @@ class TestAllelesSubcommand:
         """alleles subcommand prints the detected alleles."""
         with (
             patch("open_pacmuci.mapping.run_tool") as mock_mapping_run,
-            patch("open_pacmuci.alleles.run_tool") as mock_alleles_run,
+            patch("open_pacmuci.alleles.run_tool_iter") as mock_alleles_run,
         ):
             mock_mapping_run.return_value = "contig_60\t4120\t200\t0\n*\t0\t0\t50\n"
-            mock_alleles_run.return_value = ""
+            mock_alleles_run.return_value = iter([])
             runner = CliRunner()
             bam = tmp_path / "mapping.bam"
             bam.touch()
