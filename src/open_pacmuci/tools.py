@@ -111,3 +111,40 @@ def check_tools(tools: list[str]) -> bool:
         )
     logger.info("All required tools found: %s", ", ".join(tools))
     return True
+
+
+def get_tool_versions(tools: list[str]) -> dict[str, str]:
+    """Capture installed tool versions for reproducibility metadata.
+
+    Attempts to run ``<tool> --version`` for each tool and captures the
+    first line of output as the version string.
+
+    Args:
+        tools: List of tool names to query.
+
+    Returns:
+        Dictionary mapping tool name to version string, or "not found"
+        if the tool is not available.
+    """
+    versions: dict[str, str] = {}
+    for tool in tools:
+        if not shutil.which(tool):
+            versions[tool] = "not found"
+            continue
+        try:
+            env = os.environ.copy()
+            env["PATH"] = _clean_path_for_externals(env.get("PATH", ""))
+            result = subprocess.run(
+                [tool, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            first_line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+            if not first_line and result.stderr.strip():
+                first_line = result.stderr.strip().splitlines()[0]
+            versions[tool] = first_line or "unknown"
+        except (subprocess.TimeoutExpired, FileNotFoundError, IndexError):
+            versions[tool] = "unknown"
+    return versions
