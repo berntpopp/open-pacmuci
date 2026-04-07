@@ -132,11 +132,14 @@ def get_tool_versions(tools: list[str]) -> dict[str, str]:
             versions[tool] = "not found"
             continue
         try:
+            env = os.environ.copy()
+            env["PATH"] = _clean_path_for_externals(env.get("PATH", ""))
             result = subprocess.run(
                 [tool, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=env,
             )
             first_line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
             if not first_line and result.stderr.strip():

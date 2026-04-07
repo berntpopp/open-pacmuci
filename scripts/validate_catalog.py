@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Validate repeat classification against MucOneUp test samples.
 
-Runs classification on all generated test samples and compares
-observed structure strings against expected results. Produces a
-TSV validation report.
+Reads batch_results.json (produced by batch_analyze.py) and generates
+a TSV validation report with sensitivity/specificity summary.
 
 Usage:
-    python scripts/validate_catalog.py [--data-dir tests/data/generated]
+    python scripts/validate_catalog.py [--results-dir tests/results]
 """
 
 from __future__ import annotations
@@ -19,12 +18,6 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate repeat classification catalog")
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=Path("tests/data/generated"),
-        help="Directory containing generated test samples",
-    )
     parser.add_argument(
         "--results-dir",
         type=Path,

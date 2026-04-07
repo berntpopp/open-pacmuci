@@ -24,7 +24,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER src/ /app/src/
 COPY --chown=$MAMBA_USER:$MAMBA_USER data/ /app/data/
 
 WORKDIR /app
-RUN micromamba run -n open-pacmuci-tools pip install --no-cache-dir --no-deps . && \
+RUN micromamba run -n open-pacmuci-tools pip install --no-cache-dir . && \
     rm -rf /app
 
 # ============================================================================
