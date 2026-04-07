@@ -243,9 +243,7 @@ class TestFilterVcfEmptyVcf:
 
         # bcftools view should NOT have -i flag (empty VCF)
         view_calls = [
-            c[0][0]
-            for c in mock_run_tool.call_args_list
-            if c[0][0][:2] == ["bcftools", "view"]
+            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
         ]
         assert len(view_calls) == 1
         assert "-i" not in view_calls[0]
@@ -270,9 +268,7 @@ class TestFilterVcfEmptyVcf:
         filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
 
         view_calls = [
-            c[0][0]
-            for c in mock_run_tool.call_args_list
-            if c[0][0][:2] == ["bcftools", "view"]
+            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
         ]
         assert len(view_calls) == 1
         view_cmd = view_calls[0]

@@ -1,21 +1,67 @@
 # open-pacmuci
 
-Open-source reconstruction of the PacMUCI pipeline for MUC1 VNTR analysis from long-read sequencing data.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/berntpopp/open-pacmuci/workflows/Test%20%26%20Quality/badge.svg)](https://github.com/berntpopp/open-pacmuci/actions)
+[![Documentation](https://img.shields.io/badge/docs-MkDocs%20Material-blue)](https://berntpopp.github.io/open-pacmuci/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Background
+Open-source MUC1 VNTR analysis pipeline for PacBio HiFi amplicon data.
 
-PacMUCI was described in [Vrbacka et al. 2025](https://doi.org/10.1101/2025.09.06.673538) as a pipeline for analyzing PacBio SMRT sequencing data of PCR amplicons spanning the MUC1 VNTR. The original source code was not published. This project reconstructs the pipeline from the published methods as an open-source, containerized tool.
+---
 
-## What it does
+## Overview
 
-1. **Allele length determination** -- Maps long reads to a synthetic reference ladder (contigs with 20-150 repeat units) and identifies the two allele lengths from mapping peaks
-2. **Variant calling** -- Uses Clair3 to detect frameshift mutations within the VNTR
-3. **Repeat classification** -- Classifies each 60bp repeat unit using the Vrbacka nomenclature system
+open-pacmuci reconstructs the **PacMUCI bioinformatics pipeline** (Vrbacka et al. 2025) for analyzing PacBio HiFi long-read sequencing data of the MUC1 VNTR region. The original source code was never published; this project rebuilds it from the methods and extends it with algorithmic improvements.
 
-## Status
+**Key Capabilities:**
 
-Under development. See `.planning/PLAN.md` for implementation details.
+- Detect frameshift mutations in the MUC1 VNTR that cause ADTKD-MUC1 kidney disease
+- Resolve close allele pairs (3-9 repeats apart) via indel-valley splitting
+- Pre-computed mutation template catalog (13 known mutations) with O(1) lookup
+- Per-repeat and per-allele confidence scoring with VCF cross-validation
+- Fully automated -- no manual IGV inspection steps
+
+---
+
+## Quick Start
+
+```bash
+open-pacmuci run \
+  --input reads.fastq \
+  --output-dir results/ \
+  --clair3-model /path/to/clair3/models/hifi \
+  --threads 8
+```
+
+**Documentation:** https://berntpopp.github.io/open-pacmuci/
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/berntpopp/open-pacmuci.git
+cd open-pacmuci
+make dev
+open-pacmuci --version
+```
+
+**Requires:** minimap2, samtools, bcftools, Clair3 on PATH. See [Installation Guide](https://berntpopp.github.io/open-pacmuci/getting-started/installation/).
+
+---
+
+## Citation
+
+If you use open-pacmuci, please cite:
+
+> Vrbacka A, Pristoupilova A, Kidd KO, et al. Long-Read Sequencing of the MUC1 VNTR. *bioRxiv.* 2025. doi: [10.1101/2025.09.06.673538](https://doi.org/10.1101/2025.09.06.673538)
+
+---
 
 ## License
 
-MIT
+MIT License -- see [LICENSE](LICENSE) for details.
+
+---
+
+**Maintained by:** [Bernt Popp](https://github.com/berntpopp)
