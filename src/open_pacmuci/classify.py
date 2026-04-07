@@ -373,48 +373,28 @@ def _classify_backward(
     return results
 
 
-def classify_sequence(
+def _forward_classify(
     sequence: str,
     repeat_dict: RepeatDictionary,
-) -> dict:
-    """Classify all repeat units in a consensus sequence.
-
-    Uses offset-aware windowing: when a repeat contains an indel, the
-    cumulative offset is tracked and subsequent window boundaries are
-    shifted accordingly.  This corrects for frameshift propagation --
-    a 1bp insertion at repeat 25 would otherwise misalign all downstream
-    windows.
-
-    Algorithm:
-        1. Start at position 0 with offset = 0
-        2. Extract window of ``unit_length + offset`` bases (the mutated
-           repeat is longer/shorter than 60bp)
-        3. Classify the window
-        4. If classification finds indels, compute the net offset and
-           accumulate it for subsequent windows
-        5. Advance position by ``unit_length + net_indel`` (actual length
-           of the repeat in the sequence)
-        6. Reset offset to 0 for the next window (each downstream repeat
-           is expected to be 60bp again, just starting from the shifted
-           position)
+    unit_length: int,
+    max_indel_probe: int,
+) -> tuple[list[dict], list[dict], list[str], int, int]:
+    """Classify repeats in a forward pass from 5' to 3'.
 
     Args:
-        sequence: Full consensus sequence (flanking regions should be trimmed).
+        sequence: Full consensus sequence.
         repeat_dict: The loaded repeat dictionary.
+        unit_length: Expected repeat unit length in bp.
+        max_indel_probe: Maximum indel size to probe on either side.
 
     Returns:
-        Dict with structure string, per-repeat details, and mutation report.
+        Tuple of (repeats, mutations, labels, pos, cumulative_offset) where
+        *pos* is the position where the forward pass stopped and
+        *cumulative_offset* is the total net indel accumulated.
     """
-    logger.info("Classifying sequence of %d bp", len(sequence))
-    unit_length = repeat_dict.repeat_length_bp
-    # Maximum indel size to probe.  Covers all known MUC1 mutations
-    # (largest known: 25bp insertion, 14bp deletion).
-    max_indel_probe = 30
     repeats: list[dict] = []
     mutations: list[dict] = []
     labels: list[str] = []
-
-    # Use cached reverse map for O(1) exact-match lookups
 
     pos = 0
     repeat_index = 0
@@ -547,6 +527,37 @@ def classify_sequence(
         repeats.append(result)
         pos += max(advance, 1)  # always advance at least 1 to avoid infinite loop
 
+    return repeats, mutations, labels, pos, cumulative_offset
+
+
+def _apply_bidirectional_fallback(
+    sequence: str,
+    repeat_dict: RepeatDictionary,
+    repeats: list[dict],
+    mutations: list[dict],
+    labels: list[str],
+    forward_pos: int,
+) -> tuple[list[dict], list[dict], list[str]]:
+    """Apply bidirectional fallback when the forward pass left unconsumed sequence.
+
+    If the forward pass stopped with significant unconsumed sequence,
+    classify from the 3' end backward and bridge the gap.
+
+    Args:
+        sequence: Full consensus sequence.
+        repeat_dict: The loaded repeat dictionary.
+        repeats: Repeat classifications accumulated by the forward pass (mutated in place).
+        mutations: Mutations accumulated by the forward pass (mutated in place).
+        labels: Labels accumulated by the forward pass (mutated in place).
+        forward_pos: Position where the forward pass stopped.
+
+    Returns:
+        Tuple of (repeats, mutations, labels) with fallback results appended.
+    """
+    unit_length = repeat_dict.repeat_length_bp
+    pos = forward_pos
+    repeat_index = len(repeats)
+
     # --- Bidirectional fallback ---
     # If the forward pass stopped with significant unconsumed sequence,
     # try classifying from the 3' end backward.
@@ -585,6 +596,26 @@ def classify_sequence(
                     labels.append(f"?{bwd_result.get('closest_match', '?')}")
                 repeats.append(bwd_result)
 
+    return repeats, mutations, labels
+
+
+def _compute_classification_summary(
+    repeats: list[dict],
+    mutations: list[dict],
+    labels: list[str],
+    cumulative_offset: int,
+) -> dict:
+    """Compute summary statistics and build the final classification result dict.
+
+    Args:
+        repeats: Per-repeat classification results.
+        mutations: Mutations detected during classification.
+        labels: Label string for each repeat.
+        cumulative_offset: Net cumulative indel offset accumulated during classification.
+
+    Returns:
+        Final classification result dict.
+    """
     confidences = [r.get("confidence", 1.0) for r in repeats]
     exact_count = sum(1 for r in repeats if r.get("match") == "exact")
     allele_confidence = sum(confidences) / len(confidences) if confidences else 0.0
@@ -598,6 +629,55 @@ def classify_sequence(
         "allele_confidence": round(allele_confidence, 4),
         "exact_match_pct": round(exact_match_pct, 1),
     }
+
+
+def classify_sequence(
+    sequence: str,
+    repeat_dict: RepeatDictionary,
+) -> dict:
+    """Classify all repeat units in a consensus sequence.
+
+    Uses offset-aware windowing: when a repeat contains an indel, the
+    cumulative offset is tracked and subsequent window boundaries are
+    shifted accordingly.  This corrects for frameshift propagation --
+    a 1bp insertion at repeat 25 would otherwise misalign all downstream
+    windows.
+
+    Algorithm:
+        1. Start at position 0 with offset = 0
+        2. Extract window of ``unit_length + offset`` bases (the mutated
+           repeat is longer/shorter than 60bp)
+        3. Classify the window
+        4. If classification finds indels, compute the net offset and
+           accumulate it for subsequent windows
+        5. Advance position by ``unit_length + net_indel`` (actual length
+           of the repeat in the sequence)
+        6. Reset offset to 0 for the next window (each downstream repeat
+           is expected to be 60bp again, just starting from the shifted
+           position)
+
+    Args:
+        sequence: Full consensus sequence (flanking regions should be trimmed).
+        repeat_dict: The loaded repeat dictionary.
+
+    Returns:
+        Dict with structure string, per-repeat details, and mutation report.
+    """
+    logger.info("Classifying sequence of %d bp", len(sequence))
+    unit_length = repeat_dict.repeat_length_bp
+    # Maximum indel size to probe.  Covers all known MUC1 mutations
+    # (largest known: 25bp insertion, 14bp deletion).
+    max_indel_probe = 30
+
+    repeats, mutations, labels, pos, cumulative_offset = _forward_classify(
+        sequence, repeat_dict, unit_length, max_indel_probe
+    )
+
+    repeats, mutations, labels = _apply_bidirectional_fallback(
+        sequence, repeat_dict, repeats, mutations, labels, pos
+    )
+
+    return _compute_classification_summary(repeats, mutations, labels, cumulative_offset)
 
 
 def _qual_to_confidence(qual: float) -> float:
