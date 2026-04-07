@@ -126,3 +126,39 @@ def test_run_tool_logs_command(mocker, caplog):
         run_tool(["echo", "hello"])
 
     assert any("echo hello" in record.message for record in caplog.records)
+
+
+def test_run_tool_iter_yields_lines(mocker):
+    """run_tool_iter yields stdout lines without buffering."""
+    from unittest.mock import MagicMock
+
+    from open_pacmuci.tools import run_tool_iter
+
+    mock_proc = MagicMock()
+    mock_proc.stdout = iter(["line1\n", "line2\n", "line3\n"])
+    mock_proc.wait.return_value = 0
+    mock_proc.returncode = 0
+
+    mocker.patch("open_pacmuci.tools.subprocess.Popen", return_value=mock_proc)
+
+    lines = list(run_tool_iter(["echo", "hello"]))
+    assert lines == ["line1\n", "line2\n", "line3\n"]
+
+
+def test_run_tool_iter_raises_on_failure(mocker):
+    """run_tool_iter raises RuntimeError on non-zero exit."""
+    from unittest.mock import MagicMock
+
+    from open_pacmuci.tools import run_tool_iter
+
+    mock_proc = MagicMock()
+    mock_proc.stdout = iter([])
+    mock_proc.wait.return_value = 1
+    mock_proc.returncode = 1
+    mock_proc.stderr = MagicMock()
+    mock_proc.stderr.read.return_value = "error output"
+
+    mocker.patch("open_pacmuci.tools.subprocess.Popen", return_value=mock_proc)
+
+    with pytest.raises(RuntimeError, match="failed"):
+        list(run_tool_iter(["failing_tool"]))

@@ -196,34 +196,34 @@ SAM_WITH_INDELS = "\n".join(
 class TestRefinePeakContig:
     """Tests for refine_peak_contig."""
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_selects_contig_with_highest_mean_as(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_selects_contig_with_highest_mean_as(self, mock_run_tool_iter, tmp_path):
         """Picks the contig whose reads have the highest mean alignment score."""
-        mock_run_tool.return_value = SAM_TWO_CONTIGS
+        mock_run_tool_iter.return_value = iter(SAM_TWO_CONTIGS.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
 
         result = refine_peak_contig(bam, ["contig_50", "contig_51"])
 
         assert result["best_contig"] == "contig_51"
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_calls_samtools_view_with_cluster_contigs(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_calls_samtools_view_with_cluster_contigs(self, mock_run_tool_iter, tmp_path):
         """samtools view is called with all cluster contig names."""
-        mock_run_tool.return_value = SAM_ONE_CONTIG
+        mock_run_tool_iter.return_value = iter(SAM_ONE_CONTIG.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
         contigs = ["contig_50", "contig_51", "contig_52"]
 
         refine_peak_contig(bam, contigs)
 
-        cmd = mock_run_tool.call_args[0][0]
+        cmd = mock_run_tool_iter.call_args[0][0]
         assert cmd[:2] == ["samtools", "view"]
         for c in contigs:
             assert c in cmd
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_metrics_reported_per_contig(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_metrics_reported_per_contig(self, mock_run_tool_iter, tmp_path):
         """Returns per-contig mean_as, mean_indel_bp, and reads counts."""
-        mock_run_tool.return_value = SAM_TWO_CONTIGS
+        mock_run_tool_iter.return_value = iter(SAM_TWO_CONTIGS.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
 
         result = refine_peak_contig(bam, ["contig_50", "contig_51"])
@@ -236,20 +236,20 @@ class TestRefinePeakContig:
         assert "reads" in m
         assert m["reads"] == 3
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_single_contig_is_selected_as_best(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_single_contig_is_selected_as_best(self, mock_run_tool_iter, tmp_path):
         """When only one contig has reads, it is always selected."""
-        mock_run_tool.return_value = SAM_ONE_CONTIG
+        mock_run_tool_iter.return_value = iter(SAM_ONE_CONTIG.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
 
         result = refine_peak_contig(bam, ["contig_51"])
 
         assert result["best_contig"] == "contig_51"
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_empty_sam_output_falls_back_to_first_contig(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_empty_sam_output_falls_back_to_first_contig(self, mock_run_tool_iter, tmp_path):
         """With no aligned reads, best_contig defaults to the first in the list."""
-        mock_run_tool.return_value = ""
+        mock_run_tool_iter.return_value = iter([])
         bam = tmp_path / "mapping.bam"
         contigs = ["contig_48", "contig_49", "contig_50"]
 
@@ -258,10 +258,10 @@ class TestRefinePeakContig:
         assert result["best_contig"] == "contig_48"
         assert result["metrics"] == {}
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_indel_length_computed_from_cigar(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_indel_length_computed_from_cigar(self, mock_run_tool_iter, tmp_path):
         """mean_indel_bp is derived from I/D operations in the CIGAR string."""
-        mock_run_tool.return_value = SAM_WITH_INDELS
+        mock_run_tool_iter.return_value = iter(SAM_WITH_INDELS.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
 
         result = refine_peak_contig(bam, ["contig_50", "contig_51"])
@@ -269,11 +269,11 @@ class TestRefinePeakContig:
         # contig_50 read has 50I in CIGAR → mean_indel_bp == 50
         assert result["metrics"]["contig_50"]["mean_indel_bp"] == 50.0
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_header_lines_are_skipped(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_header_lines_are_skipped(self, mock_run_tool_iter, tmp_path):
         """SAM header lines starting with @ are ignored."""
         sam_with_header = "@HD\tVN:1.6\n@SQ\tSN:contig_51\tLN:3660\n" + SAM_ONE_CONTIG
-        mock_run_tool.return_value = sam_with_header
+        mock_run_tool_iter.return_value = iter(sam_with_header.splitlines(keepends=True))
         bam = tmp_path / "mapping.bam"
 
         # Should not raise or count header lines as reads
@@ -395,18 +395,18 @@ class TestSplitClusterByIndel:
         "contigs": [(40, 50), (42, 50), (45, 50), (48, 50), (50, 50)],
     }
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_returns_none_when_no_reads(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_returns_none_when_no_reads(self, mock_run_tool_iter, tmp_path):
         """Returns None when samtools view produces no alignment lines."""
-        mock_run_tool.return_value = ""
+        mock_run_tool_iter.return_value = iter([])
         bam = tmp_path / "mapping.bam"
 
         result = _split_cluster_by_indel(bam, self._CLUSTER)
 
         assert result is None
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_returns_none_when_single_group(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_returns_none_when_single_group(self, mock_run_tool_iter, tmp_path):
         """Returns None when all reads have similar indel lengths (single valley).
 
         All reads use 3600M CIGAR → 0 bp indels on every contig.  The
@@ -417,15 +417,15 @@ class TestSplitClusterByIndel:
         sam_lines: list[str] = []
         for c, _ in self._CLUSTER["contigs"]:
             sam_lines.extend(_make_indel_sam_lines(f"contig_{c}", "3600M"))
-        mock_run_tool.return_value = "\n".join(sam_lines)
+        mock_run_tool_iter.return_value = iter(line + "\n" for line in sam_lines)
 
         bam = tmp_path / "mapping.bam"
         result = _split_cluster_by_indel(bam, self._CLUSTER)
 
         assert result is None
 
-    @patch("open_pacmuci.alleles.run_tool")
-    def test_splits_with_distinct_indel_groups(self, mock_run_tool, tmp_path):
+    @patch("open_pacmuci.alleles.run_tool_iter")
+    def test_splits_with_distinct_indel_groups(self, mock_run_tool_iter, tmp_path):
         """Returns 2 sub-clusters when reads fall into two distinct indel groups.
 
         Layout (5 contigs, all with reads):
@@ -449,7 +449,7 @@ class TestSplitClusterByIndel:
         sam_lines.extend(_make_indel_sam_lines("contig_48", "3420M180I"))
         # Valley B: contig_50 — no indels
         sam_lines.extend(_make_indel_sam_lines("contig_50", "3600M"))
-        mock_run_tool.return_value = "\n".join(sam_lines)
+        mock_run_tool_iter.return_value = iter(line + "\n" for line in sam_lines)
 
         bam = tmp_path / "mapping.bam"
         result = _split_cluster_by_indel(bam, self._CLUSTER)

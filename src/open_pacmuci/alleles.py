@@ -26,7 +26,7 @@ import re
 from pathlib import Path
 from typing import TypedDict
 
-from open_pacmuci.tools import run_tool
+from open_pacmuci.tools import run_tool_iter
 
 # TypedDicts below document the expected structure of return values.
 # Functions return plain dicts for mypy compatibility; these types are
@@ -123,14 +123,13 @@ def refine_peak_contig(
         - ``best_contig`` (str): name of the best-matching contig
         - ``metrics`` (dict): per-contig ``{mean_as, mean_indel_bp, reads}``
     """
-    sam_output = run_tool(["samtools", "view", str(bam_path), *cluster_contigs])
-
     # Accumulate per-contig stats
     contig_stats: dict[str, dict] = {
         c: {"as_sum": 0, "indel_sum": 0, "count": 0} for c in cluster_contigs
     }
 
-    for line in sam_output.strip().splitlines():
+    for line in run_tool_iter(["samtools", "view", str(bam_path), *cluster_contigs]):
+        line = line.strip()
         if not line or line.startswith("@"):
             continue
         fields = line.split("\t")
@@ -248,14 +247,14 @@ def _split_cluster_by_indel(
     cluster is genuinely homozygous (single indel valley).
     """
     contig_names = [f"contig_{c}" for c, _ in cluster["contigs"]]
-    sam_output = run_tool(["samtools", "view", str(bam_path), *contig_names])
 
     # Compute per-contig mean indel bp
     contig_stats: dict[int, dict] = {}
     for c, _ in cluster["contigs"]:
         contig_stats[c] = {"indel_sum": 0, "count": 0}
 
-    for line in sam_output.strip().splitlines():
+    for line in run_tool_iter(["samtools", "view", str(bam_path), *contig_names]):
+        line = line.strip()
         if not line or line.startswith("@"):
             continue
         fields = line.split("\t")

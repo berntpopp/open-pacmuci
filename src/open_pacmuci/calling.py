@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
@@ -353,12 +354,14 @@ def call_variants_per_allele(
         alleles["homozygous"] = disambig.pop("homozygous")
         return disambig
 
-    results: dict[str, Path] = {}
+    # Collect allele keys to process (skip allele_2 when homozygous)
+    allele_keys = [
+        k
+        for k in ("allele_1", "allele_2")
+        if k in alleles and not (alleles.get("homozygous") and k == "allele_2")
+    ]
 
-    for allele_key in ("allele_1", "allele_2"):
-        if alleles.get("homozygous") and allele_key == "allele_2":
-            continue
-
+    def _process_allele(allele_key: str) -> tuple[str, Path]:
         allele_info = alleles[allele_key]
         # Use the peak contig name from allele detection (contig_N where N is
         # canonical X repeat count, NOT total length).  Fall back to computing
@@ -385,16 +388,26 @@ def call_variants_per_allele(
         # avoids Clair3 scanning 150 empty contigs.
         contig_ref = allele_dir / f"{contig_name}.fa"
         clair3_dir = allele_dir / "clair3"
+        # Split thread budget across parallel alleles to avoid CPU oversubscription
+        per_allele_threads = max(1, threads // len(allele_keys))
         vcf = run_clair3(
             allele_bam,
             contig_ref,
             clair3_dir,
             model_path=clair3_model,
-            threads=threads,
+            threads=per_allele_threads,
         )
 
         # Filter VCF
         filtered = filter_vcf(vcf, contig_ref, allele_dir, min_qual=min_qual, min_dp=min_dp)
-        results[allele_key] = filtered
+        return allele_key, filtered
+
+    # Process both alleles in parallel when they are independent
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {executor.submit(_process_allele, k): k for k in allele_keys}
+        results: dict[str, Path] = {}
+        for future in futures:
+            key, vcf_path = future.result()
+            results[key] = vcf_path
 
     return results

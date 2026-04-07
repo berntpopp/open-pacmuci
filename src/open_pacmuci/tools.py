@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+from collections.abc import Generator
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,68 @@ def run_tool(cmd: list[str], cwd: str | None = None) -> str:
         )
 
     return result.stdout
+
+
+def run_tool_iter(
+    cmd: list[str],
+    cwd: str | None = None,
+) -> Generator[str, None, None]:
+    """Run an external tool and yield stdout lines without buffering.
+
+    Unlike :func:`run_tool`, this does not capture all stdout in memory.
+    Use for commands that may produce large output (e.g., ``samtools view``).
+
+    Args:
+        cmd: Command and arguments.
+        cwd: Working directory for the command.
+
+    Yields:
+        Lines of stdout as strings.
+
+    Raises:
+        FileNotFoundError: If the tool is not found on PATH.
+        RuntimeError: If the command exits with non-zero status.
+    """
+    env = os.environ.copy()
+    env["PATH"] = _clean_path_for_externals(env.get("PATH", ""))
+
+    logger.debug("Running (streaming): %s", " ".join(str(c) for c in cmd))
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        cwd=cwd,
+    )
+
+    # Drain stderr in a background thread to prevent blocking if the
+    # subprocess writes enough to fill the stderr pipe buffer.
+    import threading
+
+    stderr_chunks: list[str] = []
+
+    def _drain_stderr() -> None:
+        if proc.stderr:
+            stderr_chunks.append(proc.stderr.read())
+
+    stderr_thread = threading.Thread(target=_drain_stderr)
+    stderr_thread.start()
+
+    try:
+        if proc.stdout is not None:
+            yield from proc.stdout
+    finally:
+        stderr_thread.join()
+        proc.wait()
+
+    if proc.returncode != 0:
+        stderr = stderr_chunks[0] if stderr_chunks else ""
+        raise RuntimeError(
+            f"Command failed: {' '.join(str(c) for c in cmd)}\n"
+            f"Exit code: {proc.returncode}\nstderr: {stderr}"
+        )
 
 
 def check_tools(tools: list[str]) -> bool:

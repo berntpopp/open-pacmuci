@@ -338,6 +338,11 @@ def classify(
     default=5.0,
     help="Minimum QUAL score for VCF filtering (default 5.0).",
 )
+@click.option(
+    "--report/--no-report",
+    default=False,
+    help="Generate HTML report (requires jinja2: pip install open-pacmuci[report]).",
+)
 def run(
     input_path: str,
     output_dir: str,
@@ -346,6 +351,7 @@ def run(
     threads: int,
     min_coverage: int,
     min_qual: float,
+    report: bool,
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
@@ -434,7 +440,70 @@ def run(
         "pipeline_version": __version__,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+
+    if report:
+        try:
+            from open_pacmuci.report import generate_report
+
+            report_path = out / "report.html"
+            generate_report(
+                summary,
+                report_path,
+                sample_name=Path(input_path).stem,
+                detailed_repeats=all_results,
+            )
+            click.echo(f"Report: {report_path}")
+        except ImportError as e:
+            click.echo(f"Warning: {e}", err=True)
+
     click.echo("Pipeline complete.")
+
+
+@main.command()
+@click.option(
+    "--input",
+    "-i",
+    "input_path",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to summary.json from a previous run.",
+)
+@click.option("--output", "-o", type=click.Path(), default="report.html", help="Output HTML path.")
+@click.option("--sample-name", "-s", default=None, help="Sample name for report header.")
+@click.option(
+    "--repeats",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to repeats.json for detailed repeat table.",
+)
+def report(input_path: str, output: str, sample_name: str | None, repeats: str | None) -> None:
+    """Generate an HTML report from pipeline results."""
+    import json
+
+    try:
+        from open_pacmuci.report import generate_report
+    except ImportError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from e
+
+    try:
+        summary = json.loads(Path(input_path).read_text())
+    except (json.JSONDecodeError, ValueError) as e:
+        click.echo(f"Error: Failed to parse JSON from {input_path}: {e}", err=True)
+        raise SystemExit(1) from e
+
+    name = sample_name or Path(input_path).parent.name
+
+    detailed = None
+    if repeats:
+        try:
+            detailed = json.loads(Path(repeats).read_text())
+        except (json.JSONDecodeError, ValueError) as e:
+            click.echo(f"Error: Failed to parse JSON from {repeats}: {e}", err=True)
+            raise SystemExit(1) from e
+
+    out_path = generate_report(summary, Path(output), sample_name=name, detailed_repeats=detailed)
+    click.echo(f"Report written to {out_path}")
 
 
 def _bundled_reference() -> Path:

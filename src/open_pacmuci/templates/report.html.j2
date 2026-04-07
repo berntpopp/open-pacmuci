@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-pacmuci Report &ndash; {{ sample_name }}</title>
+<style>
+/* ── Custom properties ──────────────────────────────────── */
+:root {
+  --bg: #ffffff;
+  --bg-card: #f8f9fa;
+  --bg-hover: #f0f1f2;
+  --fg: #1a1a2e;
+  --fg-muted: #5a5a7a;
+  --border: #e0e0e8;
+  --accent: #2563eb;
+  --accent-light: #dbeafe;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  /* repeat-type palette (WCAG AA on white) */
+  --clr-pre: #1d4ed8;
+  --clr-pre-bg: #dbeafe;
+  --clr-canonical: #6b7280;
+  --clr-canonical-bg: #f3f4f6;
+  --clr-variant: #047857;
+  --clr-variant-bg: #d1fae5;
+  --clr-after: #b45309;
+  --clr-after-bg: #fef3c7;
+  --clr-mutation: #b91c1c;
+  --clr-mutation-bg: #fee2e2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-hover: #334155;
+    --fg: #e2e8f0;
+    --fg-muted: #94a3b8;
+    --border: #334155;
+    --accent: #60a5fa;
+    --accent-light: #1e3a5f;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --clr-pre: #93c5fd;
+    --clr-pre-bg: #1e3a5f;
+    --clr-canonical: #9ca3af;
+    --clr-canonical-bg: #374151;
+    --clr-variant: #6ee7b7;
+    --clr-variant-bg: #064e3b;
+    --clr-after: #fcd34d;
+    --clr-after-bg: #78350f;
+    --clr-mutation: #fca5a5;
+    --clr-mutation-bg: #7f1d1d;
+  }
+}
+
+/* ── Reset & base ───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.6;
+  padding: 2rem 1rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* ── Typography ─────────────────────────────────────────── */
+h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+h2 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 1rem; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
+h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+
+/* ── Card layout ────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.report-header {
+  margin-bottom: 2rem;
+}
+.report-header .meta {
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+.report-header .meta span + span::before {
+  content: "\00a0\00b7\00a0";
+}
+
+/* ── Badge ──────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+.badge-info    { background: var(--accent-light); color: var(--accent); }
+.badge-success { background: #dcfce7; color: #166534; }
+.badge-warning { background: #fef9c3; color: #854d0e; }
+.badge-danger  { background: #fee2e2; color: #991b1b; }
+
+@media (prefers-color-scheme: dark) {
+  .badge-success { background: #064e3b; color: #6ee7b7; }
+  .badge-warning { background: #78350f; color: #fcd34d; }
+  .badge-danger  { background: #7f1d1d; color: #fca5a5; }
+}
+
+/* ── Allele cards ───────────────────────────────────────── */
+.allele-stat { margin-bottom: 0.5rem; }
+.allele-stat .label { color: var(--fg-muted); font-size: 0.8125rem; }
+.allele-stat .value { font-weight: 600; font-size: 1.125rem; }
+
+.read-bar-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+.read-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+/* ── Tooltip ────────────────────────────────────────────── */
+.tip {
+  position: relative;
+  cursor: help;
+}
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0.35em 0.6em;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.tip:hover::after { opacity: 1; }
+/* wide variant for longer text */
+.tip-wide::after { white-space: normal; width: 220px; text-align: center; }
+
+/* ── Help icon ─────────────────────────────────────────── */
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-muted);
+  color: var(--fg-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* ── Repeat structure ───────────────────────────────────── */
+.repeat-map { display: flex; flex-wrap: wrap; gap: 2px; margin: 0.75rem 0; }
+.repeat-unit {
+  width: 18px;
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  position: relative;
+  cursor: default;
+}
+/* Rich CSS tooltip for repeat units */
+.repeat-unit::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.repeat-unit:hover::after { opacity: 1; }
+.repeat-unit:hover { transform: scaleY(1.3); border-color: var(--fg); z-index: 5; }
+
+/* Category colours */
+.ru-pre       { background: var(--clr-pre-bg); border-color: var(--clr-pre); }
+.ru-canonical { background: var(--clr-canonical-bg); border-color: var(--clr-canonical); }
+.ru-variant   { background: var(--clr-variant-bg); border-color: var(--clr-variant); }
+.ru-after     { background: var(--clr-after-bg); border-color: var(--clr-after); }
+.ru-mutation  {
+  background: var(--clr-mutation-bg);
+  border-color: var(--clr-mutation);
+  /* Diagonal stripe for colorblind accessibility */
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    var(--clr-mutation) 3px,
+    var(--clr-mutation) 4px
+  );
+}
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.75rem; font-size: 0.8125rem; }
+.legend-item { display: flex; align-items: center; gap: 0.35rem; }
+.legend-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+/* ── Tables ─────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+thead th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--border);
+  color: var(--fg-muted);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+tbody td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+tbody tr:hover { background: var(--bg-hover); }
+
+/* ── Progress bar (quality metrics) ─────────────────────── */
+.progress-track {
+  height: 10px;
+  background: var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s;
+}
+.progress-fill.good    { background: var(--success); }
+.progress-fill.ok      { background: var(--warning); }
+.progress-fill.poor    { background: var(--danger); }
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+.metric-label { font-size: 0.8125rem; color: var(--fg-muted); }
+.metric-value { font-weight: 600; font-size: 0.875rem; }
+
+/* ── Collapsible details ────────────────────────────────── */
+details { margin-top: 0.5rem; }
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  user-select: none;
+  padding: 0.5rem 0;
+}
+details summary:hover { text-decoration: underline; }
+
+/* ── Footer ─────────────────────────────────────────────── */
+.report-footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+}
+.report-footer dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; }
+.report-footer dt { font-weight: 600; }
+.report-footer dd { margin: 0; }
+
+/* ── Print ──────────────────────────────────────────────── */
+@media print {
+  body { padding: 0; max-width: 100%; font-size: 11pt; }
+  .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+  h2 { page-break-after: avoid; }
+  .repeat-map { gap: 1px; }
+  .repeat-unit { width: 14px; height: 18px; }
+  details[open] { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════
+     1. HEADER
+     ════════════════════════════════════════════════════════ -->
+<header class="report-header" aria-label="Report header">
+  <h1>open-pacmuci Report</h1>
+  <p class="meta">
+    <span>Sample: <strong>{{ sample_name }}</strong></span>
+    <span>Pipeline v{{ pipeline_version }}</span>
+    <span>{{ generated_at }}</span>
+  </p>
+</header>
+
+<!-- ════════════════════════════════════════════════════════
+     2. ALLELE SUMMARY
+     ════════════════════════════════════════════════════════ -->
+<section aria-label="Allele summary">
+  <h2>Allele Summary <span class="help-icon tip tip-wide" data-tip="Two alleles detected from read alignment to the reference ladder. Each allele's repeat count and read support are shown.">?</span></h2>
+  {% set alleles = summary.get("alleles", {}) %}
+  {% set a1 = alleles.get("allele_1", {}) %}
+  {% set a2 = alleles.get("allele_2", {}) %}
+  {% set total_reads = (a1.get("reads", 0) + a2.get("reads", 0)) or 1 %}
+
+  {% if alleles.get("homozygous") %}
+  <p><span class="badge badge-info">Homozygous</span></p>
+  {% endif %}
+
+  <div class="card-grid" style="margin-top:0.75rem;">
+    {# ── Allele 1 card ── #}
+    <div class="card">
+      <h3>Allele 1</h3>
+      <div class="allele-stat">
+        <div class="label">Repeat count <span class="help-icon tip" data-tip="Total repeat units including 5 pre-repeats and 4 after-repeats">?</span></div>
+        <div class="value">{{ a1.get("length", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Canonical repeats <span class="help-icon tip" data-tip="Number of variable 60bp repeat units (excludes fixed pre/after-repeats)">?</span></div>
+        <div class="value">{{ a1.get("canonical_repeats", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Reads <span class="help-icon tip" data-tip="Total HiFi reads mapped to this allele's contig cluster">?</span></div>
+        <div class="value">{{ a1.get("reads", 0) }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Contig <span class="help-icon tip" data-tip="Best-matching reference ladder contig by alignment score">?</span></div>
+        <div class="value">{{ a1.get("contig_name", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Read distribution <span class="help-icon tip tip-wide" data-tip="Proportion of reads for this allele. Shorter alleles amplify more in PCR, so unequal bars are normal.">?</span></div>
+        <div class="read-bar-track tip" data-tip="{{ a1.get('reads', 0) }} / {{ total_reads }} reads ({{ (a1.get('reads', 0) / total_reads * 100)|round(1) }}%)"
+             role="progressbar"
+             aria-valuenow="{{ a1.get('reads', 0) }}" aria-valuemin="0"
+             aria-valuemax="{{ total_reads }}"
+             aria-label="Allele 1 read proportion">
+          <div class="read-bar-fill"
+               style="width:{{ (a1.get('reads', 0) / total_reads * 100)|round(1) }}%"></div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Allele 2 card ── #}
+    <div class="card">
+      <h3>Allele 2</h3>
+      <div class="allele-stat">
+        <div class="label">Repeat count <span class="help-icon tip" data-tip="Total repeat units including 5 pre-repeats and 4 after-repeats">?</span></div>
+        <div class="value">{{ a2.get("length", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Canonical repeats <span class="help-icon tip" data-tip="Number of variable 60bp repeat units (excludes fixed pre/after-repeats)">?</span></div>
+        <div class="value">{{ a2.get("canonical_repeats", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Reads <span class="help-icon tip" data-tip="Total HiFi reads mapped to this allele's contig cluster">?</span></div>
+        <div class="value">{{ a2.get("reads", 0) }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Contig <span class="help-icon tip" data-tip="Best-matching reference ladder contig by alignment score">?</span></div>
+        <div class="value">{{ a2.get("contig_name", "N/A") }}</div>
+      </div>
+      <div class="allele-stat">
+        <div class="label">Read distribution <span class="help-icon tip tip-wide" data-tip="Proportion of reads for this allele. Shorter alleles amplify more in PCR, so unequal bars are normal.">?</span></div>
+        <div class="read-bar-track tip" data-tip="{{ a2.get('reads', 0) }} / {{ total_reads }} reads ({{ (a2.get('reads', 0) / total_reads * 100)|round(1) }}%)"
+             role="progressbar"
+             aria-valuenow="{{ a2.get('reads', 0) }}" aria-valuemin="0"
+             aria-valuemax="{{ total_reads }}"
+             aria-label="Allele 2 read proportion">
+          <div class="read-bar-fill"
+               style="width:{{ (a2.get('reads', 0) / total_reads * 100)|round(1) }}%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     3. REPEAT STRUCTURE VISUALIZATION
+     ════════════════════════════════════════════════════════ -->
+{% set classifications = summary.get("classifications", {}) %}
+{% if classifications %}
+<section aria-label="Repeat structure visualization">
+  <h2>Repeat Structure <span class="help-icon tip tip-wide" data-tip="Each block is one 60bp repeat unit. Hover a block to see its type and position. Colors indicate the repeat category.">?</span></h2>
+
+  {# Legend #}
+  <div class="legend" aria-label="Repeat type legend">
+    <div class="legend-item"><span class="legend-swatch ru-pre"></span> Pre-repeat</div>
+    <div class="legend-item"><span class="legend-swatch ru-canonical"></span> Canonical</div>
+    <div class="legend-item"><span class="legend-swatch ru-variant"></span> Variant</div>
+    <div class="legend-item"><span class="legend-swatch ru-after"></span> After-repeat</div>
+    <div class="legend-item"><span class="legend-swatch ru-mutation"></span> Mutation</div>
+  </div>
+
+  {% for allele_key in ["allele_1", "allele_2"] %}
+  {% set cls = classifications.get(allele_key, {}) %}
+  {% set structure = cls.get("structure", "") %}
+  {% if structure %}
+  <h3>{{ allele_key | replace("_", " ") | title }}</h3>
+  <div class="repeat-map" aria-label="{{ allele_key }} repeat map">
+    {% for unit_type in structure.split(" ") %}
+      {# Categorise the repeat type #}
+      {% if unit_type in ["1","2","3","4","5"] %}
+        {% set cat = "pre" %}
+      {% elif unit_type in ["6","6p","7","8","9"] %}
+        {% set cat = "after" %}
+      {% elif ":" in unit_type or unit_type.endswith("m") %}
+        {% set cat = "mutation" %}
+      {% elif unit_type.startswith("?") %}
+        {% set cat = "variant" %}
+      {% else %}
+        {% set cat = "canonical" %}
+      {% endif %}
+      <span class="repeat-unit ru-{{ cat }}"
+            data-tip="#{{ loop.index }} {{ unit_type }} ({{ cat }})"
+            aria-label="Repeat {{ loop.index }}: {{ unit_type }} ({{ cat }})"></span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ════════════════════════════════════════════════════════
+     4. MUTATION REPORT TABLE
+     ════════════════════════════════════════════════════════ -->
+<section aria-label="Mutation report">
+  <h2>Mutation Report <span class="help-icon tip tip-wide" data-tip="Frameshift mutations (insertions/deletions not divisible by 3) in repeat units. These cause ADTKD-MUC1 disease.">?</span></h2>
+  {% set any_mutations = [] %}
+  {% for akey in ["allele_1", "allele_2"] %}
+    {% for m in classifications.get(akey, {}).get("mutations", []) %}
+      {% if any_mutations.append({"allele": akey, "m": m}) %}{% endif %}
+    {% endfor %}
+  {% endfor %}
+
+  {% if any_mutations | length > 0 %}
+  <table>
+    <thead>
+      <tr>
+        <th>Allele</th>
+        <th class="tip" data-tip="Position of the mutated repeat unit in the allele">Repeat #</th>
+        <th class="tip" data-tip="The canonical repeat type before mutation occurred">Parent type</th>
+        <th class="tip" data-tip="Name of the detected mutation (e.g. dupC = cytosine duplication)">Mutation</th>
+        <th class="tip" data-tip="Frameshift: indel length not divisible by 3, disrupts reading frame">Frameshift</th>
+        <th class="tip" data-tip="Whether Clair3 variant caller independently detected this mutation">VCF support</th>
+        <th class="tip" data-tip="Clair3 quality score: higher = more confident variant call">QUAL</th>
+        <th class="tip" data-tip="Mutations near allele boundaries may be alignment artifacts (0.5x penalty)">Boundary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in any_mutations %}
+      {% set m = entry.m %}
+      <tr>
+        <td>{{ entry.allele | replace("_", " ") | title }}</td>
+        <td>{{ m.get("repeat_index", "N/A") }}</td>
+        <td>{{ m.get("closest_type", "N/A") }}</td>
+        <td><strong>{{ m.get("mutation_name", "N/A") }}</strong></td>
+        <td>
+          {% if m.get("frameshift") %}
+            <span class="badge badge-danger">Frameshift</span>
+          {% else %}
+            <span class="badge badge-success">In-frame</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if m.get("vcf_support") %}
+            <span class="badge badge-success">Supported</span>
+          {% else %}
+            <span class="badge badge-warning">Unsupported</span>
+          {% endif %}
+        </td>
+        <td>{{ m.get("vcf_qual", "N/A") }}</td>
+        <td>
+          {% if m.get("boundary") %}
+            <span class="badge badge-warning">Boundary</span>
+          {% else %}
+            &mdash;
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--fg-muted);">No mutations detected in either allele.</p>
+  {% endif %}
+</section>
+
+<!-- ════════════════════════════════════════════════════════
+     5. QUALITY METRICS
+     ════════════════════════════════════════════════════════ -->
+{% if detailed_repeats %}
+<section aria-label="Quality metrics">
+  <h2>Quality Metrics <span class="help-icon tip tip-wide" data-tip="Classification quality per allele. Green (>=80%) is good, yellow (>=50%) is moderate, red (<50%) needs review.">?</span></h2>
+  <div class="card-grid">
+    {% for allele_key in ["allele_1", "allele_2"] %}
+    {% set dr = detailed_repeats.get(allele_key, {}) %}
+    {% set conf = dr.get("confidence", dr.get("allele_confidence", 0)) %}
+    {% set exact = dr.get("exact_match_pct", 0) %}
+    <div class="card">
+      <h3>{{ allele_key | replace("_", " ") | title }}</h3>
+
+      <div style="margin-bottom:0.75rem;">
+        <div class="metric-row">
+          <span class="metric-label tip" data-tip="Average classification confidence across all repeat units">Allele confidence</span>
+          <span class="metric-value">{{ "%.1f"|format(conf * 100) if conf <= 1 else "%.1f"|format(conf) }}%</span>
+        </div>
+        <div class="progress-track" role="progressbar"
+             aria-valuenow="{{ (conf * 100)|round(1) if conf <= 1 else conf|round(1) }}"
+             aria-valuemin="0" aria-valuemax="100"
+             aria-label="{{ allele_key }} confidence">
+          {% set conf_pct = (conf * 100) if conf <= 1 else conf %}
+          <div class="progress-fill {{ 'good' if conf_pct >= 80 else ('ok' if conf_pct >= 50 else 'poor') }}"
+               style="width:{{ conf_pct|round(1) }}%"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="metric-row">
+          <span class="metric-label tip" data-tip="Percentage of repeat units that exactly match a known reference sequence">Exact match</span>
+          <span class="metric-value">{{ "%.1f"|format(exact * 100) if exact <= 1 else "%.1f"|format(exact) }}%</span>
+        </div>
+        <div class="progress-track" role="progressbar"
+             aria-valuenow="{{ (exact * 100)|round(1) if exact <= 1 else exact|round(1) }}"
+             aria-valuemin="0" aria-valuemax="100"
+             aria-label="{{ allele_key }} exact match percentage">
+          {% set exact_pct = (exact * 100) if exact <= 1 else exact %}
+          <div class="progress-fill {{ 'good' if exact_pct >= 80 else ('ok' if exact_pct >= 50 else 'poor') }}"
+               style="width:{{ exact_pct|round(1) }}%"></div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ════════════════════════════════════════════════════════
+     6. DETAILED REPEAT TABLE (collapsible)
+     ════════════════════════════════════════════════════════ -->
+{% if detailed_repeats %}
+<section aria-label="Detailed repeat data">
+  <h2>Detailed Repeats</h2>
+  {% for allele_key in ["allele_1", "allele_2"] %}
+  {% set dr = detailed_repeats.get(allele_key, {}) %}
+  {% set repeats = dr.get("repeats", []) %}
+  {% if repeats %}
+  <details>
+    <summary>{{ allele_key | replace("_", " ") | title }} &mdash; {{ repeats | length }} units</summary>
+    <div style="overflow-x:auto;margin-top:0.5rem;">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Type</th>
+          <th>Classification</th>
+          <th>Confidence</th>
+          <th>Edit dist.</th>
+          <th>Identity %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in repeats %}
+        <tr>
+          <td>{{ r.get("index", loop.index) }}</td>
+          <td>{{ r.get("type", "N/A") }}</td>
+          <td>{{ r.get("classification", r.get("match", "N/A")) }}</td>
+          <td>{{ "%.2f"|format(r.get("confidence", 0)) }}</td>
+          <td>{{ r.get("edit_distance", "N/A") }}</td>
+          <td>{{ "%.1f"|format(r.get("identity_pct", 0)) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ════════════════════════════════════════════════════════
+     7. REPRODUCIBILITY FOOTER
+     ════════════════════════════════════════════════════════ -->
+<footer class="report-footer" aria-label="Reproducibility information">
+  <dl>
+    <dt>Pipeline</dt>
+    <dd>open-pacmuci v{{ pipeline_version }}</dd>
+    <dt>Generated</dt>
+    <dd>{{ generated_at }}</dd>
+    {% for name, version in tool_versions.items() %}
+    <dt>{{ name }}</dt>
+    <dd>{{ version }}</dd>
+    {% endfor %}
+  </dl>
+</footer>
+
+</body>
+</html>
