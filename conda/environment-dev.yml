@@ -1,0 +1,15 @@
+# Development environment with loose version ranges.
+# Use this for local development where you want the latest compatible tools.
+# For reproducible builds (CI, Docker, publications), use environment.yml.
+name: open-pacmuci-tools
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  - python=3.10
+  - minimap2>=2.28
+  - samtools>=1.21
+  - bcftools>=1.10
+  - htslib
