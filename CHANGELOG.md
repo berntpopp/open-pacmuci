@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-07
+
 ### Added
-- `--platform` CLI option on `run` and `call` subcommands to select sequencing platform (`hifi` or `ont`)
+- `--platform` CLI option on `run`, `map`, and `call` subcommands to select sequencing platform (`hifi` or `ont`)
 - `--minimap2-preset` CLI option on `run`, `map`, and `call` subcommands to override minimap2 alignment preset
 - Auto-selection of minimap2 preset from platform (`hifi` -> `map-hifi`, `ont` -> `lr:hq`)
 - ONT support: Clair3 `--platform=ont` and minimap2 `lr:hq` preset threaded through full pipeline
+- `minimap2` added to `check_tools` for `call` subcommand (upfront dependency check)
 
 ## [0.6.0] - 2026-04-07
 
