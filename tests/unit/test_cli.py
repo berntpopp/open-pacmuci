@@ -488,6 +488,35 @@ class TestRunSubcommand:
         assert "Pipeline complete" in result.output
 
 
+class TestReportSubcommand:
+    def test_report_from_summary_json(self, tmp_path):
+        import json
+        summary = {
+            "alleles": {
+                "allele_1": {"length": 50, "reads": 100, "canonical_repeats": 41,
+                             "contig_name": "c41", "cluster_contigs": ["c41"]},
+                "allele_2": {"length": 60, "reads": 80, "canonical_repeats": 51,
+                             "contig_name": "c51", "cluster_contigs": ["c51"]},
+                "homozygous": False, "same_length": False,
+            },
+            "classifications": {
+                "allele_1": {"structure": "1 2 3 X 6 7 8 9", "mutations": []},
+                "allele_2": {"structure": "1 2 3 X X 6 7 8 9", "mutations": []},
+            },
+        }
+        summary_path = tmp_path / "summary.json"
+        summary_path.write_text(json.dumps(summary))
+        out = tmp_path / "report.html"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["report", "--input", str(summary_path), "--output", str(out), "--sample-name", "test"],
+        )
+        assert result.exit_code == 0, result.output
+        assert out.exists()
+        assert "test" in out.read_text()
+
+
 class TestConsensusSubcommand:
     """Tests for the consensus subcommand with mocked tools."""
 
