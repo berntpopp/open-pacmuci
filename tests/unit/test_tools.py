@@ -87,6 +87,31 @@ class TestCheckTools:
         assert check_tools([]) is True
 
 
+def test_get_tool_versions_returns_versions(mocker):
+    """get_tool_versions captures version strings from external tools."""
+    mocker.patch(
+        "open_pacmuci.tools.subprocess.run",
+        return_value=mocker.MagicMock(returncode=0, stdout="minimap2 2.28-r1209\n"),
+    )
+    mocker.patch("open_pacmuci.tools.shutil.which", return_value="/usr/bin/minimap2")
+
+    from open_pacmuci.tools import get_tool_versions
+
+    versions = get_tool_versions(["minimap2"])
+    assert "minimap2" in versions
+    assert "2.28" in versions["minimap2"]
+
+
+def test_get_tool_versions_handles_missing_tool(mocker):
+    """get_tool_versions returns 'not found' for missing tools."""
+    mocker.patch("open_pacmuci.tools.shutil.which", return_value=None)
+
+    from open_pacmuci.tools import get_tool_versions
+
+    versions = get_tool_versions(["nonexistent_tool"])
+    assert versions["nonexistent_tool"] == "not found"
+
+
 def test_run_tool_logs_command(mocker, caplog):
     """run_tool logs the command at DEBUG level."""
     mocker.patch(

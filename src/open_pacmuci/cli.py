@@ -354,9 +354,10 @@ def run(
     from open_pacmuci.config import load_repeat_dictionary
     from open_pacmuci.consensus import build_consensus_per_allele
     from open_pacmuci.mapping import get_idxstats, map_reads
-    from open_pacmuci.tools import check_tools
+    from open_pacmuci.tools import check_tools, get_tool_versions
 
     check_tools(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
+    tool_versions = get_tool_versions(["minimap2", "samtools", "bcftools", "run_clair3.sh"])
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -428,6 +429,8 @@ def run(
             }
             for k, v in all_results.items()
         },
+        "tool_versions": tool_versions,
+        "pipeline_version": __version__,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     click.echo("Pipeline complete.")
