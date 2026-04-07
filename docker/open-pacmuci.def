@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: ghcr.io/berntpopp/open-pacmuci:latest
+From: ghcr.io/berntpopp/open-pacmuci:0.3.0
 
 %labels
     Author Bernt Popp
