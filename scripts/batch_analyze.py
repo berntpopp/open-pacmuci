@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,7 +20,7 @@ from pathlib import Path
 
 SAMPLES_DIR = Path("tests/data/generated")
 OUTPUT_DIR = Path("tests/results")
-CLAIR3_MODEL = "/home/bernt-popp/miniforge3/envs/env_clair3/bin/models/hifi"
+CLAIR3_MODEL = os.environ.get("CLAIR3_MODEL", "")
 
 
 def parse_ground_truth(sample_dir: Path) -> dict:

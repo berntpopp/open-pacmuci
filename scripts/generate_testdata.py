@@ -61,10 +61,10 @@ SAMPLES = [
     ("sample_dupc_60_80_cov50", 60, 80, "dupC", "1,25", 1022),
 ]
 
+COVERAGE = 200
+
 # Samples that use non-default coverage
 LOW_COVERAGE_SAMPLES = {"sample_dupc_60_80_cov50": 50}
-
-COVERAGE = 200
 
 
 def run(cmd: list[str], desc: str) -> None:
