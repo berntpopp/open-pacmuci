@@ -487,3 +487,42 @@ class TestBoundaryPenalty:
         if validated["mutations_detected"]:
             mut = validated["mutations_detected"][0]
             assert mut["boundary"] is True
+
+
+def test_classify_sequence_raises_on_no_match(mocker):
+    """classify_sequence raises RuntimeError when no repeat match is found.
+
+    We mock classify_repeat to return None so that best_result stays None
+    after both the exact-match and fuzzy-fallback phases, triggering the
+    guard at the bottom of the inner loop.
+    """
+    import open_pacmuci.classify as classify_mod
+    from open_pacmuci.classify import classify_sequence
+    from open_pacmuci.config import RepeatDictionary
+
+    # Create a minimal but structurally valid repeat dict.
+    rd = RepeatDictionary(
+        repeats={},
+        repeat_length_bp=60,
+        pre_repeat_ids=["1", "2", "3", "4", "5"],
+        after_repeat_ids=["6", "7", "8", "9"],
+        canonical_repeat="X",
+        flanking_left="",
+        flanking_right="",
+        vntr_region="",
+        source="test",
+        mutations={},
+        mutated_sequences={},
+        seq_to_id={},
+    )
+
+    # Patch classify_repeat inside the classify module to return None,
+    # which leaves best_result as None and triggers the guard.
+    mocker.patch.object(classify_mod, "classify_repeat", return_value=None)
+
+    # A full-length sequence so remaining >= unit_length and the fallback
+    # path runs and calls the (mocked) classify_repeat.
+    sequence = "A" * 60
+
+    with pytest.raises(RuntimeError, match="Classification failed"):
+        classify_sequence(sequence, rd)
