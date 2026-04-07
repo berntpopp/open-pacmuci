@@ -6,13 +6,16 @@ from __future__ import annotations
 import pytest
 
 try:
-    from open_pacmuci.report import generate_report
+    import jinja2  # noqa: F401
 
     _HAS_JINJA2 = True
 except ImportError:
     _HAS_JINJA2 = False
 
 pytestmark = pytest.mark.skipif(not _HAS_JINJA2, reason="jinja2 not installed")
+
+if _HAS_JINJA2:
+    from open_pacmuci.report import generate_report
 
 
 @pytest.fixture
