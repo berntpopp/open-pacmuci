@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from open_pacmuci.mapping import _run_mapping_pipeline, bam_to_fastq, get_idxstats, map_reads
+from open_pacmuci.mapping import bam_to_fastq, get_idxstats, map_reads
 
 
 class TestBamToFastq:
@@ -146,7 +146,7 @@ class TestMapReads:
         map_reads(fastq, ref, tmp_path, threads=2, preset="lr:hq")
 
         pipeline_call = mock_pipeline.call_args
-        assert pipeline_call.kwargs.get("preset") == "lr:hq" or "lr:hq" in pipeline_call[0]
+        assert pipeline_call.kwargs["preset"] == "lr:hq"
 
 
 class TestGetIdxstats:
