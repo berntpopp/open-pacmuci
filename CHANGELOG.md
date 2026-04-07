@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-07
+
+### Added
+- Self-contained HTML report with modern UI/UX, hover tooltips, dark/light mode, print stylesheet
+- Optional `[report]` extra for Jinja2 dependency (`pip install open-pacmuci[report]`)
+- `--report` flag on `run` subcommand and standalone `report` subcommand
+- Rich hover tooltips throughout report (repeat blocks, metrics, section headers)
+- Parallel per-allele variant calling via ThreadPoolExecutor
+- Streaming `run_tool_iter()` for memory-efficient SAM parsing
+- Pipeline benchmark script (`scripts/benchmark.py`)
+
+### Changed
+- Streaming SAM parsing in `refine_peak_contig` and `_split_cluster_by_indel`
+- Split thread budget across parallel alleles to avoid CPU oversubscription
+
 ## [0.5.0] - 2026-04-07
 
 ### Added
@@ -90,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Project scaffolding with uv, ruff, mypy, pytest, CI
 - Initial pipeline implementation
 
-[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/berntpopp/open-pacmuci/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/berntpopp/open-pacmuci/compare/v0.2.0...v0.3.0
