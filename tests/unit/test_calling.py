@@ -278,6 +278,34 @@ class TestCallVariantsPerAllele:
         result = call_variants_per_allele(bam, ref, alleles, tmp_path)
         assert "allele_1" in result
 
+    @patch("open_pacmuci.vcf.run_tool")
+    @patch("open_pacmuci.calling.run_tool")
+    def test_platform_and_preset_threaded_through(self, mock_run_tool, mock_vcf_tool, tmp_path):
+        """platform and preset are forwarded: minimap2 gets -x lr:hq, clair3 gets --platform=ont."""
+        mock_run_tool.return_value = ""
+        mock_vcf_tool.return_value = ""
+        bam = tmp_path / "mapping.bam"
+        bam.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+        alleles = self._make_alleles_heterozygous()
+
+        call_variants_per_allele(
+            bam, ref, alleles, tmp_path, platform="ont", preset="lr:hq"
+        )
+
+        all_calls = [c[0][0] for c in mock_run_tool.call_args_list]
+        minimap2_calls = [cmd for cmd in all_calls if cmd[0] == "minimap2"]
+        clair3_calls = [cmd for cmd in all_calls if cmd[0] == "run_clair3.sh"]
+
+        assert minimap2_calls, "minimap2 was not called"
+        minimap2_cmd = minimap2_calls[0]
+        x_idx = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_idx + 1] == "lr:hq"
+
+        assert clair3_calls, "run_clair3.sh was not called"
+        assert any("--platform=ont" in cmd for cmd in clair3_calls)
+
 
 class TestExtractAndRemapReads:
     """Tests for the private _extract_and_remap_reads helper."""
@@ -327,6 +355,57 @@ class TestExtractAndRemapReads:
         contig_faidx = [c for c in faidx_calls if "contig_51" in c]
         assert contig_faidx
 
+    @patch("open_pacmuci.calling.run_tool")
+    def test_preset_passed_to_minimap2(self, mock_run_tool, tmp_path):
+        """When preset='lr:hq' is given, minimap2 is called with -x lr:hq."""
+        mock_run_tool.return_value = ""
+        bam = tmp_path / "mapping.bam"
+        bam.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        _extract_and_remap_reads(
+            bam,
+            ["contig_51"],
+            "contig_51",
+            ref,
+            tmp_path / "out",
+            threads=2,
+            preset="lr:hq",
+        )
+
+        all_calls = [c[0][0] for c in mock_run_tool.call_args_list]
+        minimap2_calls = [cmd for cmd in all_calls if cmd[0] == "minimap2"]
+        assert minimap2_calls, "minimap2 was not called"
+        minimap2_cmd = minimap2_calls[0]
+        x_idx = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_idx + 1] == "lr:hq"
+
+    @patch("open_pacmuci.calling.run_tool")
+    def test_preset_defaults_to_map_hifi(self, mock_run_tool, tmp_path):
+        """When preset is not given, minimap2 is called with -x map-hifi."""
+        mock_run_tool.return_value = ""
+        bam = tmp_path / "mapping.bam"
+        bam.touch()
+        ref = tmp_path / "ref.fa"
+        ref.touch()
+
+        _extract_and_remap_reads(
+            bam,
+            ["contig_51"],
+            "contig_51",
+            ref,
+            tmp_path / "out",
+            threads=2,
+        )
+
+        all_calls = [c[0][0] for c in mock_run_tool.call_args_list]
+        minimap2_calls = [cmd for cmd in all_calls if cmd[0] == "minimap2"]
+        assert minimap2_calls, "minimap2 was not called"
+        minimap2_cmd = minimap2_calls[0]
+        x_idx = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_idx + 1] == "map-hifi"
+
 
 class TestDisambiguateSameLengthAlleles:
     """Tests for disambiguate_same_length_alleles."""
@@ -362,3 +441,33 @@ class TestDisambiguateSameLengthAlleles:
         assert "allele_1" in result
         assert "allele_2" in result
         assert result.get("homozygous") is False
+
+    @patch("open_pacmuci.vcf.run_tool", return_value="")
+    @patch("open_pacmuci.calling.run_tool", return_value="")
+    @patch("open_pacmuci.calling.parse_vcf_genotypes", return_value=[])
+    def test_platform_and_preset_threaded_through(self, mock_geno, mock_run, mock_vcf_tool, tmp_path):
+        """platform and preset are forwarded: minimap2 gets -x lr:hq, clair3 gets --platform=ont."""
+        alleles = {
+            "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+            "allele_2": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
+        }
+        disambiguate_same_length_alleles(
+            tmp_path / "bam",
+            tmp_path / "ref.fa",
+            alleles,
+            tmp_path,
+            platform="ont",
+            preset="lr:hq",
+        )
+
+        all_calls = [c[0][0] for c in mock_run.call_args_list]
+        minimap2_calls = [cmd for cmd in all_calls if cmd[0] == "minimap2"]
+        clair3_calls = [cmd for cmd in all_calls if cmd[0] == "run_clair3.sh"]
+
+        assert minimap2_calls, "minimap2 was not called"
+        minimap2_cmd = minimap2_calls[0]
+        x_idx = minimap2_cmd.index("-x")
+        assert minimap2_cmd[x_idx + 1] == "lr:hq"
+
+        assert clair3_calls, "run_clair3.sh was not called"
+        assert any("--platform=ont" in cmd for cmd in clair3_calls)
