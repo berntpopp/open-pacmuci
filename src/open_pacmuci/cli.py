@@ -13,7 +13,9 @@ from open_pacmuci.version import __version__
 
 @click.group()
 @click.version_option(version=__version__, prog_name="open-pacmuci")
-@click.option("-v", "--verbose", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG).")
+@click.option(
+    "-v", "--verbose", count=True, help="Increase verbosity (-v for INFO, -vv for DEBUG)."
+)
 @click.option("-q", "--quiet", is_flag=True, help="Suppress non-error output.")
 @click.pass_context
 def main(ctx: click.Context, verbose: int, quiet: bool) -> None:

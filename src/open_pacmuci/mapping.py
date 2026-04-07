@@ -151,10 +151,7 @@ def _run_mapping_pipeline(
     p1.wait()
 
     if p1.returncode != 0:
-        raise RuntimeError(
-            f"minimap2 failed with exit code {p1.returncode}.\n"
-            f"stderr: {p1_stderr}"
-        )
+        raise RuntimeError(f"minimap2 failed with exit code {p1.returncode}.\nstderr: {p1_stderr}")
     if p2.returncode != 0:
         raise RuntimeError(
             f"samtools sort failed with exit code {p2.returncode}.\nstderr: {p2_stderr.decode()}"
