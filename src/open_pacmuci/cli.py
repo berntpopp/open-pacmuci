@@ -349,7 +349,8 @@ def run(
 ) -> None:
     """Run the full open-pacmuci pipeline."""
     from open_pacmuci.alleles import detect_alleles, parse_idxstats
-    from open_pacmuci.calling import call_variants_per_allele, parse_vcf_variants
+    from open_pacmuci.calling import call_variants_per_allele
+    from open_pacmuci.vcf import parse_vcf_variants
     from open_pacmuci.classify import classify_sequence
     from open_pacmuci.config import load_repeat_dictionary
     from open_pacmuci.consensus import build_consensus_per_allele

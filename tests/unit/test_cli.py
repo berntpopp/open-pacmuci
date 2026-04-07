@@ -344,6 +344,7 @@ class TestCallSubcommand:
         with (
             patch("open_pacmuci.tools.check_tools", return_value=True),
             patch("open_pacmuci.calling.run_tool", return_value=""),
+            patch("open_pacmuci.vcf.run_tool", return_value=""),
         ):
             bam = tmp_path / "mapping.bam"
             bam.touch()
