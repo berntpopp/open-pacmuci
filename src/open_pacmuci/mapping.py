@@ -118,6 +118,12 @@ def _run_mapping_pipeline(
     except FileNotFoundError as exc:
         raise FileNotFoundError("Tool not found: minimap2") from exc
 
+    # Verify stdout was captured before piping into samtools
+    if p1.stdout is None:
+        p1.kill()
+        p1.wait()
+        raise RuntimeError("minimap2 process stdout was not captured")
+
     try:
         p2 = subprocess.Popen(
             samtools_cmd,
@@ -131,16 +137,17 @@ def _run_mapping_pipeline(
         raise FileNotFoundError("Tool not found: samtools") from exc
 
     # Allow p1 to receive SIGPIPE if p2 exits early
-    assert p1.stdout is not None
     p1.stdout.close()
 
+    # Read stderr before wait() to avoid potential deadlock if stderr buffer fills
+    p1_stderr = p1.stderr.read().decode() if p1.stderr else ""
     _, p2_stderr = p2.communicate()
     p1.wait()
 
     if p1.returncode != 0:
         raise RuntimeError(
             f"minimap2 failed with exit code {p1.returncode}.\n"
-            f"stderr: {p1.stderr.read().decode() if p1.stderr else ''}"
+            f"stderr: {p1_stderr}"
         )
     if p2.returncode != 0:
         raise RuntimeError(
