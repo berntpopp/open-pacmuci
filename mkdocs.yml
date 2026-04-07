@@ -168,6 +168,7 @@ nav:
     - CLI Commands: reference/cli.md
     - Known Mutations: reference/mutations.md
     - Repeat Nomenclature: reference/nomenclature.md
+    - Limitations: reference/limitations.md
 
   - About:
     - Citation: about/citation.md
