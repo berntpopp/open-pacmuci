@@ -196,17 +196,50 @@ muconeup --config config.json simulate \
 
 ### Test Set 5: ONT Amplicon (Cross-Platform)
 
-Same samples as Test Set 1 but with ONT reads:
+Same samples as Test Set 1 but with ONT reads. open-pacmuci now supports ONT via `--platform ont`.
+
+**Generate ONT reads:**
 
 ```bash
 for seed in 100 101 102 103 104; do
+  # Mutant
   muconeup reads amplicon pair_${seed}_mut.*.simulated.fa \
+    --model-file /path/to/ont_model \
+    --coverage 200 --seed ${seed} --platform ont
+
+  # Normal
+  muconeup reads amplicon pair_${seed}_normal.*.simulated.fa \
     --model-file /path/to/ont_model \
     --coverage 200 --seed ${seed} --platform ont
 done
 ```
 
-**Expected:** If open-pacmuci is adapted for ONT, validate cross-platform consistency.
+**Run open-pacmuci with ONT mode:**
+
+```bash
+for sample_dir in tests/data/generated_ont/*/; do
+  bam=$(ls ${sample_dir}*_reads_amplicon_aligned.bam 2>/dev/null | head -1)
+  [ -z "$bam" ] && continue
+  open-pacmuci run \
+    --input "$bam" \
+    --output-dir "tests/results_ont/$(basename $sample_dir)" \
+    --platform ont \
+    --threads 4
+done
+```
+
+Or use the batch script:
+
+```bash
+python scripts/batch_analyze.py tests/data/generated_ont tests/results_ont --platform ont
+```
+
+**Minimum ONT test samples** (for `scripts/generate_testdata.py` ONT extension):
+- `sample_ont_dupc_60_80` — dupC mutation, ONT reads
+- `sample_ont_normal_60_80` — normal control, ONT reads
+- `sample_ont_dupa_60_80` — dupA mutation, ONT reads
+
+**Expected:** Validate cross-platform consistency. ONT may show lower sensitivity for 1bp frameshifts due to higher error rate.
 
 ## Ground Truth Extraction
 

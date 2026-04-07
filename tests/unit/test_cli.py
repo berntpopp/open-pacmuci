@@ -640,6 +640,12 @@ class TestPlatformOptions:
         result = runner.invoke(main, ["map", "--help"])
         assert "--minimap2-preset" in result.output
 
+    def test_map_help_shows_platform(self):
+        """map --help includes --platform option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["map", "--help"])
+        assert "--platform" in result.output
+
     def test_run_rejects_invalid_platform(self):
         """run --platform=invalid is rejected by Click."""
         runner = CliRunner()

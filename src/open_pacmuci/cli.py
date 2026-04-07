@@ -90,16 +90,23 @@ def ladder(
 @click.option("--output-dir", "-o", type=click.Path(), default=".", help="Output directory.")
 @click.option("--threads", "-t", type=int, default=4, help="Number of threads.")
 @click.option(
+    "--platform",
+    type=click.Choice(["hifi", "ont"], case_sensitive=False),
+    default="hifi",
+    help="Sequencing platform (default: hifi).",
+)
+@click.option(
     "--minimap2-preset",
     type=str,
     default=None,
-    help="minimap2 -x preset (default: map-hifi).",
+    help="minimap2 -x preset (auto-selected from --platform if not set).",
 )
 def map_cmd(
     input_path: str,
     reference: str | None,
     output_dir: str,
     threads: int,
+    platform: str,
     minimap2_preset: str | None,
 ) -> None:
     """Map reads to the ladder reference with minimap2."""
@@ -108,7 +115,7 @@ def map_cmd(
 
     check_tools(["minimap2", "samtools"])
 
-    preset = minimap2_preset or "map-hifi"
+    preset = minimap2_preset or PLATFORM_PRESETS[platform]
     ref = Path(reference) if reference else _bundled_reference()
     bam = map_reads(Path(input_path), ref, Path(output_dir), threads, preset=preset)
     click.echo(f"Mapping written to {bam}")

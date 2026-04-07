@@ -33,3 +33,25 @@ Repeat sequences with >2 base substitutions from any known type are classified a
 ### Bidirectional Classification Fallback
 
 When the forward classification pass encounters a large indel (>30bp offset from the expected 60bp unit length), the algorithm falls back to bidirectional classification. This backward anchoring from the 3' end recovers downstream repeats but may produce different results than purely forward classification for the ambiguous region.
+
+## ONT-Specific Limitations
+
+### Higher Error Rate
+
+Oxford Nanopore reads have a higher per-base error rate than PacBio HiFi, even with Q20+ chemistry. This can lead to:
+
+- Lower variant calling confidence (QUAL scores)
+- Increased false-positive frameshift calls near homopolymer runs
+- Reduced sensitivity for small (1bp) insertions/deletions
+
+### Minimap2 Preset
+
+ONT data uses the `lr:hq` minimap2 preset (requires minimap2 >= 2.26). This preset is optimized for high-quality long reads but may produce different alignment characteristics than `map-hifi`, particularly at VNTR boundaries.
+
+### Clair3 Model Selection
+
+Clair3 automatically selects the appropriate model when `--platform=ont` is specified. ONT models may have different sensitivity/specificity trade-offs compared to HiFi models, especially for frameshift mutations in repetitive regions.
+
+### Not Yet Benchmarked
+
+ONT support has been implemented but not yet systematically benchmarked with simulated ONT data. Sensitivity and specificity figures reported in the documentation are based on PacBio HiFi data only. ONT benchmarking with MucOneUp-generated samples is planned.
