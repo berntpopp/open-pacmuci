@@ -59,8 +59,25 @@ make lint              # Run ruff linter
 make format            # Format code
 make type-check        # Run mypy
 make check             # All quality checks
+make ci-check          # Exact CI pipeline locally (strict mypy, 80% coverage)
 make generate-testdata # Generate MucOneUp test data
 ```
+
+### Pre-commit / Pre-push Checklist
+
+**Always run `make ci-check` before pushing.** This mirrors the exact GitHub Actions pipeline:
+1. `ruff check src/ tests/` -- lint (includes import sorting)
+2. `ruff format --check src/ tests/` -- format verification
+3. `mypy src/open_pacmuci/` -- type checking (strict, no `|| true`)
+4. `pytest tests/unit/ --cov-fail-under=80` -- tests with 80% coverage gate
+
+Common pitfalls to avoid:
+- **Hardcoded version strings in tests** -- use `from open_pacmuci.version import __version__` instead
+- **`import logging` after class definitions** -- ruff E402 flags module-level imports not at top
+- **Unused unpacked variables** -- prefix with `_` (e.g., `_labels, _pos`)
+- **Unsorted imports** -- ruff I001 enforces import block ordering
+- **Docker COPY paths** -- data is bundled in `src/open_pacmuci/data/`, no top-level `data/` dir
+- **`|| true` in CI commands** -- never swallow failures; if mypy or a test fails, fix it
 
 Run a single test:
 

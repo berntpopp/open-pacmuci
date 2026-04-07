@@ -10,8 +10,6 @@ from open_pacmuci.calling import (
     call_variants_per_allele,
     disambiguate_same_length_alleles,
     extract_allele_reads,
-    filter_vcf,
-    parse_vcf_genotypes,
     run_clair3,
 )
 
@@ -156,130 +154,6 @@ class TestRunClair3:
         assert out_dir.exists()
 
 
-class TestFilterVcf:
-    """Tests for filter_vcf."""
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_calls_bcftools_norm_then_view_then_index(self, mock_run_tool, tmp_path):
-        """filter_vcf runs bcftools norm, bcftools view, then bcftools index."""
-        mock_run_tool.return_value = ""
-        vcf = tmp_path / "raw.vcf.gz"
-        ref = tmp_path / "ref.fa"
-        out_dir = tmp_path / "filtered"
-
-        filter_vcf(vcf, ref, out_dir)
-
-        calls = mock_run_tool.call_args_list
-        assert calls[0][0][0][:2] == ["bcftools", "norm"]
-        assert calls[1][0][0][:2] == ["bcftools", "view"]
-        assert calls[2][0][0][:2] == ["bcftools", "index"]
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_norm_uses_reference(self, mock_run_tool, tmp_path):
-        """bcftools norm -f flag receives the reference path."""
-        mock_run_tool.return_value = ""
-        vcf = tmp_path / "raw.vcf.gz"
-        ref = tmp_path / "ref.fa"
-        out_dir = tmp_path / "filtered"
-
-        filter_vcf(vcf, ref, out_dir)
-
-        norm_cmd = mock_run_tool.call_args_list[0][0][0]
-        assert "-f" in norm_cmd
-        ref_idx = norm_cmd.index("-f")
-        assert norm_cmd[ref_idx + 1] == str(ref)
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_view_filters_pass(self, mock_run_tool, tmp_path):
-        """bcftools view uses -f PASS to keep only passing variants."""
-        mock_run_tool.return_value = ""
-        vcf = tmp_path / "raw.vcf.gz"
-        ref = tmp_path / "ref.fa"
-        out_dir = tmp_path / "filtered"
-
-        filter_vcf(vcf, ref, out_dir)
-
-        view_cmd = mock_run_tool.call_args_list[1][0][0]
-        assert "-f" in view_cmd
-        f_idx = view_cmd.index("-f")
-        assert view_cmd[f_idx + 1] == "PASS"
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_returns_variants_vcf_path(self, mock_run_tool, tmp_path):
-        """filter_vcf returns path to variants.vcf.gz."""
-        mock_run_tool.return_value = ""
-        vcf = tmp_path / "raw.vcf.gz"
-        ref = tmp_path / "ref.fa"
-        out_dir = tmp_path / "filtered"
-
-        result = filter_vcf(vcf, ref, out_dir)
-
-        assert result == out_dir / "variants.vcf.gz"
-
-
-class TestFilterVcfEmptyVcf:
-    """Tests for filter_vcf handling empty VCFs (issue #8)."""
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_empty_vcf_skips_quality_filter(self, mock_run_tool, tmp_path):
-        """Empty VCF (no records) skips -i filter to avoid INFO/DP crash."""
-        # bcftools norm returns empty output, then bcftools view should NOT
-        # include -i filter since there are no records to filter
-        norm_vcf = tmp_path / "normalized.vcf.gz"
-
-        def side_effect(cmd):
-            # After norm runs, create the normalized file with header only
-            if cmd[:2] == ["bcftools", "norm"]:
-                norm_vcf.write_bytes(b"")  # empty file
-            return ""
-
-        mock_run_tool.side_effect = side_effect
-        vcf = tmp_path / "input.vcf.gz"
-        vcf.touch()
-        ref = tmp_path / "ref.fa"
-        ref.touch()
-
-        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
-
-        # bcftools view should NOT have -i flag (empty VCF)
-        view_calls = [
-            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
-        ]
-        assert len(view_calls) == 1
-        assert "-i" not in view_calls[0]
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_nonempty_vcf_uses_qual_only_filter(self, mock_run_tool, tmp_path):
-        """Non-empty VCF uses QUAL filter only (no INFO/DP which may not exist)."""
-        norm_vcf = tmp_path / "normalized.vcf.gz"
-
-        def side_effect(cmd):
-            if cmd[:2] == ["bcftools", "norm"]:
-                # Write a non-empty file to simulate records
-                norm_vcf.write_bytes(b"\x00" * 100)
-            return ""
-
-        mock_run_tool.side_effect = side_effect
-        vcf = tmp_path / "input.vcf.gz"
-        vcf.touch()
-        ref = tmp_path / "ref.fa"
-        ref.touch()
-
-        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
-
-        view_calls = [
-            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
-        ]
-        assert len(view_calls) == 1
-        view_cmd = view_calls[0]
-        assert "-i" in view_cmd
-        i_idx = view_cmd.index("-i")
-        expr = view_cmd[i_idx + 1]
-        assert "QUAL" in expr
-        # Should NOT reference INFO/DP (may not exist in Clair3 output)
-        assert "INFO/DP" not in expr
-
-
 class TestCallVariantsPerAllele:
     """Tests for call_variants_per_allele."""
 
@@ -321,10 +195,12 @@ class TestCallVariantsPerAllele:
             },
         }
 
+    @patch("open_pacmuci.vcf.run_tool")
     @patch("open_pacmuci.calling.run_tool")
-    def test_heterozygous_processes_both_alleles(self, mock_run_tool, tmp_path):
+    def test_heterozygous_processes_both_alleles(self, mock_run_tool, mock_vcf_tool, tmp_path):
         """For a heterozygous sample, both allele_1 and allele_2 are processed."""
         mock_run_tool.return_value = ""
+        mock_vcf_tool.return_value = ""
         bam = tmp_path / "mapping.bam"
         bam.touch()
         ref = tmp_path / "ref.fa"
@@ -336,10 +212,12 @@ class TestCallVariantsPerAllele:
         assert "allele_1" in result
         assert "allele_2" in result
 
+    @patch("open_pacmuci.vcf.run_tool")
     @patch("open_pacmuci.calling.run_tool")
-    def test_homozygous_skips_allele_2(self, mock_run_tool, tmp_path):
+    def test_homozygous_skips_allele_2(self, mock_run_tool, mock_vcf_tool, tmp_path):
         """For a homozygous sample, allele_2 is skipped."""
         mock_run_tool.return_value = ""
+        mock_vcf_tool.return_value = ""
         bam = tmp_path / "mapping.bam"
         bam.touch()
         ref = tmp_path / "ref.fa"
@@ -351,10 +229,12 @@ class TestCallVariantsPerAllele:
         assert "allele_1" in result
         assert "allele_2" not in result
 
+    @patch("open_pacmuci.vcf.run_tool")
     @patch("open_pacmuci.calling.run_tool")
-    def test_returns_dict_of_vcf_paths(self, mock_run_tool, tmp_path):
+    def test_returns_dict_of_vcf_paths(self, mock_run_tool, mock_vcf_tool, tmp_path):
         """Results map allele keys to Path objects."""
         mock_run_tool.return_value = ""
+        mock_vcf_tool.return_value = ""
         bam = tmp_path / "mapping.bam"
         bam.touch()
         ref = tmp_path / "ref.fa"
@@ -366,10 +246,12 @@ class TestCallVariantsPerAllele:
         for _key, path in result.items():
             assert isinstance(path, Path)
 
+    @patch("open_pacmuci.vcf.run_tool")
     @patch("open_pacmuci.calling.run_tool")
-    def test_fallback_contig_name_from_length(self, mock_run_tool, tmp_path):
+    def test_fallback_contig_name_from_length(self, mock_run_tool, mock_vcf_tool, tmp_path):
         """When contig_name is absent, falls back to contig_<length>."""
         mock_run_tool.return_value = ""
+        mock_vcf_tool.return_value = ""
         bam = tmp_path / "mapping.bam"
         bam.touch()
         ref = tmp_path / "ref.fa"
@@ -395,50 +277,6 @@ class TestCallVariantsPerAllele:
         # Should not raise
         result = call_variants_per_allele(bam, ref, alleles, tmp_path)
         assert "allele_1" in result
-
-
-class TestFilterVcfQuality:
-    """Tests for VCF quality filter parameters."""
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_filter_vcf_includes_quality_expression(self, mock_run_tool, tmp_path):
-        """filter_vcf passes QUAL filter to bcftools view for non-empty VCFs."""
-        norm_vcf = tmp_path / "normalized.vcf.gz"
-
-        def side_effect(cmd):
-            if cmd[:2] == ["bcftools", "norm"]:
-                norm_vcf.write_bytes(b"\x00" * 100)  # non-empty
-            return ""
-
-        mock_run_tool.side_effect = side_effect
-        vcf = tmp_path / "input.vcf.gz"
-        vcf.touch()
-        ref = tmp_path / "ref.fa"
-        ref.touch()
-
-        filter_vcf(vcf, ref, tmp_path, min_qual=15.0, min_dp=5)
-
-        # Find the bcftools view call
-        view_calls = [
-            c[0][0] for c in mock_run_tool.call_args_list if c[0][0][:2] == ["bcftools", "view"]
-        ]
-        assert len(view_calls) == 1
-        view_cmd = view_calls[0]
-        assert "-i" in view_cmd
-        i_idx = view_cmd.index("-i")
-        expr = view_cmd[i_idx + 1]
-        assert "QUAL" in expr
-
-    @patch("open_pacmuci.calling.run_tool", return_value="")
-    def test_filter_vcf_default_params(self, mock_run_tool, tmp_path):
-        """filter_vcf works with default parameters (backward compatible)."""
-        vcf = tmp_path / "input.vcf.gz"
-        vcf.touch()
-        ref = tmp_path / "ref.fa"
-        ref.touch()
-
-        # Should not raise with no extra args
-        filter_vcf(vcf, ref, tmp_path)
 
 
 class TestExtractAndRemapReads:
@@ -490,29 +328,13 @@ class TestExtractAndRemapReads:
         assert contig_faidx
 
 
-class TestParseVcfGenotypes:
-    """Tests for parse_vcf_genotypes."""
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_parses_genotype_fields(self, mock_run_tool):
-        mock_run_tool.return_value = "contig_51\t100\tA\tT\t0/1\n"
-        result = parse_vcf_genotypes(Path("/fake.vcf"))
-        assert len(result) == 1
-        assert result[0]["pos"] == 100
-        assert result[0]["genotype"] == "0/1"
-
-    @patch("open_pacmuci.calling.run_tool")
-    def test_handles_runtime_error(self, mock_run_tool):
-        mock_run_tool.side_effect = RuntimeError("fail")
-        assert parse_vcf_genotypes(Path("/fake.vcf")) == []
-
-
 class TestDisambiguateSameLengthAlleles:
     """Tests for disambiguate_same_length_alleles."""
 
+    @patch("open_pacmuci.vcf.run_tool", return_value="")
     @patch("open_pacmuci.calling.run_tool", return_value="")
     @patch("open_pacmuci.calling.parse_vcf_genotypes", return_value=[])
-    def test_no_het_variants_returns_homozygous(self, mock_geno, mock_run, tmp_path):
+    def test_no_het_variants_returns_homozygous(self, mock_geno, mock_run, mock_vcf_tool, tmp_path):
         alleles = {
             "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
             "allele_2": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
@@ -523,12 +345,13 @@ class TestDisambiguateSameLengthAlleles:
         assert "allele_1" in result
         assert result.get("homozygous") is True
 
+    @patch("open_pacmuci.vcf.run_tool", return_value="")
     @patch("open_pacmuci.calling.run_tool", return_value="")
     @patch(
         "open_pacmuci.calling.parse_vcf_genotypes",
         return_value=[{"chrom": "c", "pos": 100, "ref": "A", "alt": "T", "genotype": "0/1"}],
     )
-    def test_het_variants_returns_two_alleles(self, mock_geno, mock_run, tmp_path):
+    def test_het_variants_returns_two_alleles(self, mock_geno, mock_run, mock_vcf_tool, tmp_path):
         alleles = {
             "allele_1": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},
             "allele_2": {"contig_name": "contig_51", "cluster_contigs": ["contig_51"]},

@@ -24,8 +24,33 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import TypedDict
 
 from open_pacmuci.tools import run_tool
+
+# TypedDicts below document the expected structure of return values.
+# Functions return plain dicts for mypy compatibility; these types are
+# available for callers who want to annotate their own code.
+
+
+class AlleleInfo(TypedDict):
+    """Information about a single detected allele."""
+
+    length: int
+    reads: int
+    canonical_repeats: int
+    contig_name: str
+    cluster_contigs: list[str]
+
+
+class AlleleResult(TypedDict):
+    """Result of allele detection for a sample."""
+
+    allele_1: AlleleInfo
+    allele_2: AlleleInfo
+    homozygous: bool
+    same_length: bool
+
 
 logger = logging.getLogger(__name__)
 

@@ -182,3 +182,117 @@ def test_run_mapping_pipeline_stdout_none_raises(mocker):
         )
 
     mock_p1.kill.assert_called_once()
+
+
+class TestRunMappingPipeline:
+    """Tests for _run_mapping_pipeline error paths and successful execution."""
+
+    def _make_pipeline_args(self):
+        return {
+            "input_path": Path("/tmp/test.fastq"),
+            "reference_path": Path("/tmp/ref.fa"),
+            "bam_path": Path("/tmp/out.bam"),
+            "threads": 1,
+        }
+
+    def test_minimap2_not_found(self, mocker):
+        """_run_mapping_pipeline raises FileNotFoundError mentioning minimap2."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=FileNotFoundError("No such file or directory: 'minimap2'"),
+        )
+
+        with pytest.raises(FileNotFoundError, match="minimap2"):
+            _run_mapping_pipeline(**self._make_pipeline_args())
+
+    def test_samtools_not_found(self, mocker):
+        """_run_mapping_pipeline raises FileNotFoundError mentioning samtools."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.kill = mocker.MagicMock()
+        mock_p1.wait = mocker.MagicMock()
+
+        mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[
+                mock_p1,
+                FileNotFoundError("No such file or directory: 'samtools'"),
+            ],
+        )
+
+        with pytest.raises(FileNotFoundError, match="samtools"):
+            _run_mapping_pipeline(**self._make_pipeline_args())
+
+        # p1 should be killed when samtools is not found
+        mock_p1.kill.assert_called_once()
+
+    def test_minimap2_nonzero_exit(self, mocker):
+        """_run_mapping_pipeline raises RuntimeError when minimap2 exits non-zero."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.returncode = 1
+        mock_p1.stderr = mocker.MagicMock()
+        mock_p1.stderr.read.return_value = b"minimap2 error output"
+
+        mock_p2 = mocker.MagicMock()
+        mock_p2.returncode = 0
+        mock_p2.communicate.return_value = (b"", b"")
+
+        mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[mock_p1, mock_p2],
+        )
+
+        with pytest.raises(RuntimeError, match="minimap2 failed"):
+            _run_mapping_pipeline(**self._make_pipeline_args())
+
+    def test_samtools_nonzero_exit(self, mocker):
+        """_run_mapping_pipeline raises RuntimeError when samtools sort exits non-zero."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.returncode = 0
+        mock_p1.stderr = mocker.MagicMock()
+        mock_p1.stderr.read.return_value = b""
+
+        mock_p2 = mocker.MagicMock()
+        mock_p2.returncode = 1
+        mock_p2.communicate.return_value = (b"", b"samtools sort error output")
+
+        mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[mock_p1, mock_p2],
+        )
+
+        with pytest.raises(RuntimeError, match="samtools sort failed"):
+            _run_mapping_pipeline(**self._make_pipeline_args())
+
+    def test_successful_pipeline(self, mocker):
+        """_run_mapping_pipeline calls p1.stdout.close() on successful execution."""
+        from open_pacmuci.mapping import _run_mapping_pipeline
+
+        mock_p1 = mocker.MagicMock()
+        mock_p1.stdout = mocker.MagicMock()
+        mock_p1.returncode = 0
+        mock_p1.stderr = mocker.MagicMock()
+        mock_p1.stderr.read.return_value = b""
+
+        mock_p2 = mocker.MagicMock()
+        mock_p2.returncode = 0
+        mock_p2.communicate.return_value = (b"", b"")
+
+        mocker.patch(
+            "open_pacmuci.mapping.subprocess.Popen",
+            side_effect=[mock_p1, mock_p2],
+        )
+
+        _run_mapping_pipeline(**self._make_pipeline_args())
+
+        mock_p1.stdout.close.assert_called_once()

@@ -26,7 +26,9 @@ class TestCli:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.3.0" in result.output
+        from open_pacmuci.version import __version__
+
+        assert __version__ in result.output
 
     def test_ladder_help(self):
         """ladder subcommand has help."""
@@ -344,6 +346,7 @@ class TestCallSubcommand:
         with (
             patch("open_pacmuci.tools.check_tools", return_value=True),
             patch("open_pacmuci.calling.run_tool", return_value=""),
+            patch("open_pacmuci.vcf.run_tool", return_value=""),
         ):
             bam = tmp_path / "mapping.bam"
             bam.touch()
@@ -386,6 +389,103 @@ class TestCallSubcommand:
             )
 
         assert result.exit_code == 0, result.output
+
+
+class TestRunSubcommand:
+    """Tests for the run subcommand with all pipeline stages mocked."""
+
+    def test_run_full_pipeline(self, tmp_path):
+        """run subcommand completes successfully when all stages are mocked."""
+        # Create a real input file (click checks exists=True)
+        input_file = tmp_path / "reads.fastq"
+        input_file.touch()
+        output_dir = tmp_path / "results"
+
+        # Create fake consensus FASTA files that will be read by the run function
+        allele1_fa = tmp_path / "allele1.fa"
+        allele1_fa.write_text(">allele_1_vntr\nACGTACGT\n")
+        allele2_fa = tmp_path / "allele2.fa"
+        allele2_fa.write_text(">allele_2_vntr\nACGTACGT\n")
+
+        fake_alleles_result = {
+            "homozygous": False,
+            "allele_1": {
+                "length": 60,
+                "reads": 200,
+                "canonical_repeats": 51,
+                "contig_name": "contig_51",
+                "cluster_contigs": ["contig_51"],
+            },
+            "allele_2": {
+                "length": 80,
+                "reads": 150,
+                "canonical_repeats": 71,
+                "contig_name": "contig_71",
+                "cluster_contigs": ["contig_71"],
+            },
+        }
+
+        fake_classify_result = {
+            "structure": "1-2-3-A-B-C-6-7",
+            "repeats": ["A", "B", "C"],
+            "mutations_detected": [],
+            "allele_confidence": 0.95,
+        }
+
+        with (
+            patch("open_pacmuci.tools.check_tools", return_value=True),
+            patch(
+                "open_pacmuci.tools.get_tool_versions",
+                return_value={"minimap2": "2.24", "samtools": "1.17"},
+            ),
+            patch(
+                "open_pacmuci.mapping.map_reads",
+                return_value=tmp_path / "mapping.bam",
+            ),
+            patch(
+                "open_pacmuci.mapping.get_idxstats",
+                return_value="contig_51\t3120\t200\t0\ncontig_71\t4320\t150\t0\n*\t0\t0\t50\n",
+            ),
+            patch(
+                "open_pacmuci.alleles.parse_idxstats",
+                return_value={51: 200, 71: 150},
+            ),
+            patch(
+                "open_pacmuci.alleles.detect_alleles",
+                return_value=fake_alleles_result,
+            ),
+            patch(
+                "open_pacmuci.calling.call_variants_per_allele",
+                return_value={
+                    "allele_1": tmp_path / "allele_1" / "variants.vcf.gz",
+                    "allele_2": tmp_path / "allele_2" / "variants.vcf.gz",
+                },
+            ),
+            patch(
+                "open_pacmuci.consensus.build_consensus_per_allele",
+                return_value={"allele_1": allele1_fa, "allele_2": allele2_fa},
+            ),
+            patch(
+                "open_pacmuci.classify.classify_sequence",
+                return_value=fake_classify_result,
+            ),
+            patch(
+                "open_pacmuci.classify.validate_mutations_against_vcf",
+                return_value=fake_classify_result,
+            ),
+            patch(
+                "open_pacmuci.vcf.parse_vcf_variants",
+                return_value=[],
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                ["run", "--input", str(input_file), "--output-dir", str(output_dir)],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Pipeline complete" in result.output
 
 
 class TestConsensusSubcommand:
