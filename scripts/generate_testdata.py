@@ -104,6 +104,7 @@ def generate_sample(
         str(sample_dir),
         "--num-haplotypes",
         "2",
+        # MucOneUp v0.44+ uses Click's multiple=True: pass --fixed-lengths once per value
         "--fixed-lengths",
         str(hap1_length),
         "--fixed-lengths",

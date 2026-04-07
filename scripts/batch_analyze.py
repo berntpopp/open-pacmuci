@@ -6,7 +6,8 @@ from MucOneUp's vntr_structure.txt files.
 
 Usage:
     export PATH="/home/bernt-popp/miniforge3/envs/env_pacbio/bin:$PATH"
-    python scripts/batch_analyze.py [--samples-dir tests/data/generated] [--output-dir tests/results]
+    export CLAIR3_MODEL=/path/to/clair3/models/hifi
+    python scripts/batch_analyze.py [samples_dir] [output_dir]
 """
 
 from __future__ import annotations
@@ -42,9 +43,8 @@ def parse_ground_truth(sample_dir: Path) -> dict:
         if len(parts) >= 2:
             name = parts[0].strip()
             structure = parts[1].strip()
-            has_mutation = "m" in structure.split("-")  # "Xm" means mutated repeat
-            # Count repeats (excluding pre-repeats 1-5 and after-repeats 6-9)
-            units = structure.split("-")
+            units = [u for u in structure.split("-") if u]
+            has_mutation = any(u.endswith("m") for u in units)  # "Xm" = mutated repeat
             n_repeats = len(units)
             haplotypes[name] = {
                 "structure": structure,
