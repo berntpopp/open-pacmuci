@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from open_pacmuci.cli import main
@@ -488,6 +489,14 @@ class TestRunSubcommand:
         assert "Pipeline complete" in result.output
 
 
+_has_jinja2 = True
+try:
+    import jinja2  # noqa: F401
+except ImportError:
+    _has_jinja2 = False
+
+
+@pytest.mark.skipif(not _has_jinja2, reason="jinja2 not installed")
 class TestReportSubcommand:
     def test_report_from_summary_json(self, tmp_path):
         import json

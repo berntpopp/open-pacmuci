@@ -5,7 +5,14 @@ from __future__ import annotations
 
 import pytest
 
-from open_pacmuci.report import generate_report
+try:
+    from open_pacmuci.report import generate_report
+
+    _HAS_JINJA2 = True
+except ImportError:
+    _HAS_JINJA2 = False
+
+pytestmark = pytest.mark.skipif(not _HAS_JINJA2, reason="jinja2 not installed")
 
 
 @pytest.fixture
