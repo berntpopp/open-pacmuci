@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from open_pacmuci.tools import run_tool
@@ -353,12 +354,7 @@ def call_variants_per_allele(
         alleles["homozygous"] = disambig.pop("homozygous")
         return disambig
 
-    results: dict[str, Path] = {}
-
-    for allele_key in ("allele_1", "allele_2"):
-        if alleles.get("homozygous") and allele_key == "allele_2":
-            continue
-
+    def _process_allele(allele_key: str) -> tuple[str, Path]:
         allele_info = alleles[allele_key]
         # Use the peak contig name from allele detection (contig_N where N is
         # canonical X repeat count, NOT total length).  Fall back to computing
@@ -395,6 +391,21 @@ def call_variants_per_allele(
 
         # Filter VCF
         filtered = filter_vcf(vcf, contig_ref, allele_dir, min_qual=min_qual, min_dp=min_dp)
-        results[allele_key] = filtered
+        return allele_key, filtered
+
+    # Collect allele keys to process (skip allele_2 when homozygous)
+    allele_keys = [
+        k
+        for k in ("allele_1", "allele_2")
+        if k in alleles and not (alleles.get("homozygous") and k == "allele_2")
+    ]
+
+    # Process both alleles in parallel when they are independent
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {executor.submit(_process_allele, k): k for k in allele_keys}
+        results: dict[str, Path] = {}
+        for future in futures:
+            key, vcf_path = future.result()
+            results[key] = vcf_path
 
     return results
